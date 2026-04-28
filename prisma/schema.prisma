@@ -1,0 +1,724 @@
+// dqms_v4 — Unified Manufacturing & Quotation Platform
+// Merged schema from dqms_v3 (Express) + muop (Next.js)
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// AUTHENTICATION
+// ============================================================
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      UserRole @default(OPERATIONS)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  OPERATIONS
+}
+
+// ============================================================
+// CORE ENTITIES
+// ============================================================
+
+model Client {
+  id            String   @id @default(uuid())
+  publicId      String   @unique @map("public_id")
+  name          String
+  email         String   @unique
+  contactPerson String?  @map("contact_person")
+  contactPhone  String?  @map("contact_phone")
+  address       String?
+  gstin         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  orders Order[]
+
+  @@map("clients")
+}
+
+model Vendor {
+  id             String   @id @default(uuid())
+  publicId       String   @unique @map("public_id")
+  vendorCode     String   @unique @map("vendor_code")
+  name           String
+  email          String   @unique
+  contactPerson  String?  @map("contact_person")
+  contactPhone   String?  @map("contact_phone")
+  specialization String?
+  gstin          String?
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  rfqs        RFQ[]
+  planBlocks  PlanBlock[]
+  groupedRfqs GroupedRFQVendor[]
+
+  @@map("vendors")
+}
+
+model DrawingCounter {
+  prefix       String   @id
+  lastSequence Int      @default(0) @map("last_sequence")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("drawing_counters")
+}
+
+model OrderCounter {
+  prefix       String   @id
+  lastSequence Int      @default(0) @map("last_sequence")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("order_counters")
+}
+
+// ============================================================
+// ORDER
+// ============================================================
+
+model Order {
+  id                  String      @id @default(uuid())
+  publicId            String      @unique @map("public_id")
+  displayId           String      @unique @map("display_id")
+  internalQuoteNumber String?     @unique @map("internal_quote_number")
+  clientId            String      @map("client_id")
+  status              OrderStatus @default(LEAD)
+  orderDate           DateTime?   @map("order_date")
+  deliveryDate        DateTime?   @map("delivery_date")
+  deliveryDatePO      DateTime?   @map("delivery_date_po")
+  zohoQuotationId     String?     @map("zoho_quotation_id")
+  zohoSalesOrderId    String?     @map("zoho_sales_order_id")
+  clientPoNumber      String?     @map("client_po_number")
+  clientDcNumber      String?     @map("client_dc_number")
+  mechximizeDcNumber  String?     @map("mechximize_dc_number")
+  updateSchedule      String[]    @default([]) @map("update_schedule")
+  updatesDone         Boolean[]   @default([]) @map("updates_done")
+  dispatchModule      Json?       @map("dispatch_module")
+  notes               String?
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+
+  client      Client          @relation(fields: [clientId], references: [id])
+  parts       Part[]
+  emailLogs   OrderEmailLog[]
+  documents   Document[]
+  groupedRfqs GroupedRFQ[]
+
+  @@index([clientId])
+  @@index([status])
+  @@index([deliveryDate])
+  @@map("orders")
+}
+
+enum OrderStatus {
+  LEAD
+  QUOTATION_IN_PROGRESS
+  RFQ_SENT
+  QUOTED
+  CLIENT_PROPOSAL_SENT
+  ORDER_CONFIRMED
+  IN_PRODUCTION
+  INSPECTION
+  READY_FOR_DISPATCH
+  DISPATCHED
+  COMPLETED
+  LOST
+  CANCELLED
+}
+
+// ============================================================
+// PART
+// ============================================================
+
+model Part {
+  id               String    @id @default(uuid())
+  publicId         String    @unique @map("public_id")
+  orderId          String    @map("order_id")
+  revision         Int       @default(1)
+  state            PartState @default(DRAFT)
+  active           Boolean   @default(true)
+  clientPartId     String?   @map("client_part_id")
+  partName         String?   @map("part_name")
+  description      String?
+  materialName     String?   @map("material_name")
+  materialGrade    String?   @map("material_grade")
+  surfaceTreatment String?   @map("surface_treatment")
+  quantity         Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  order             Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  files             File[]
+  vendorFiles       VendorFile[]
+  annotations       Annotation[]
+  rfqs              RFQ[]
+  groupedRfqParts   GroupedRFQPart[]
+  pricingModel      PricingModel?
+  manufacturingPlan ManufacturingPlan?
+  dimensions        Dimension[]
+
+  @@index([orderId])
+  @@index([state])
+  @@map("parts")
+}
+
+enum PartState {
+  DRAFT
+  FILES_RECEIVED
+  SANITIZED
+  RFQ_SENT
+  QUOTED
+  PRICED
+  REJECTED
+  CLIENT_APPROVED
+  PLANNED
+  IN_EXECUTION
+  COMPLETED
+  SHIPPED
+  CLOSED
+}
+
+// ============================================================
+// FILE MANAGEMENT
+// ============================================================
+
+model File {
+  id                   String           @id @default(uuid())
+  partId               String           @map("part_id")
+  fileType             FileType         @map("file_type")
+  fileName             String           @map("file_name")
+  filePath             String           @map("file_path")
+  version              Int              @default(1)
+  isOriginal           Boolean          @map("is_original")
+  isLatest             Boolean          @default(true) @map("is_latest")
+  internalDrawingId    String?          @map("internal_drawing_id")
+  clientDrawingId      String?          @map("client_drawing_id")
+  clientCompanyName    String?          @map("client_company_name")
+  sanitizationMetadata Json?            @map("sanitization_metadata")
+  aiSanitizedAt        DateTime?        @map("ai_sanitized_at")
+  createdAt            DateTime         @default(now()) @map("created_at")
+
+  part        Part             @relation(fields: [partId], references: [id], onDelete: Cascade)
+  derivatives FileDerivative[]
+  vendorFiles VendorFile[]
+
+  @@index([partId])
+  @@index([internalDrawingId])
+  @@map("files")
+}
+
+enum FileType {
+  STEP
+  DRAWING_PDF
+}
+
+model FileDerivative {
+  id             String           @id @default(uuid())
+  fileId         String           @map("file_id")
+  derivativeType DerivativeType   @map("derivative_type")
+  filePath       String           @map("file_path")
+  status         DerivativeStatus @default(PROCESSING)
+  errorMessage   String?          @map("error_message")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  file        File         @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  vendorFiles VendorFile[]
+
+  @@index([fileId])
+  @@map("file_derivatives")
+}
+
+enum DerivativeType {
+  MASKED
+  RENDER_GLB
+}
+
+enum DerivativeStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+model VendorFile {
+  id           String   @id @default(uuid())
+  partId       String   @map("part_id")
+  fileId       String   @map("file_id")
+  derivativeId String?  @map("derivative_id")
+  fileType     FileType @map("file_type")
+  fileName     String   @map("file_name")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  part       Part            @relation(fields: [partId], references: [id], onDelete: Cascade)
+  file       File            @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  derivative FileDerivative? @relation(fields: [derivativeId], references: [id], onDelete: Cascade)
+
+  @@unique([fileId])
+  @@index([partId])
+  @@map("vendor_files")
+}
+
+model Annotation {
+  id          String         @id @default(uuid())
+  partId      String         @map("part_id")
+  type        AnnotationType
+  coordinates Json
+  content     String?
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  part Part @relation(fields: [partId], references: [id], onDelete: Cascade)
+
+  @@index([partId])
+  @@map("annotations")
+}
+
+enum AnnotationType {
+  MASK
+  NOTE
+  CRITICAL_DIM
+}
+
+// ============================================================
+// RFQ & QUOTATIONS
+// ============================================================
+
+model RFQ {
+  id        String    @id @default(uuid())
+  publicId  String    @unique @map("public_id")
+  partId    String    @map("part_id")
+  vendorId  String    @map("vendor_id")
+  status    RFQStatus
+  dueDate   DateTime  @map("due_date")
+  locked    Boolean   @default(false)
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  part        Part         @relation(fields: [partId], references: [id], onDelete: Cascade)
+  vendor      Vendor       @relation(fields: [vendorId], references: [id])
+  vendorQuote VendorQuote?
+
+  @@index([partId])
+  @@index([vendorId])
+  @@map("rfqs")
+}
+
+model GroupedRFQ {
+  id        String    @id @default(uuid())
+  publicId  String    @unique @map("public_id")
+  orderId   String    @map("order_id")
+  status    RFQStatus @default(SENT)
+  dueDate   DateTime  @map("due_date")
+  coverNote String?   @map("cover_note")
+  locked    Boolean   @default(false)
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  order   Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  vendors GroupedRFQVendor[]
+  parts   GroupedRFQPart[]
+
+  @@index([orderId])
+  @@map("grouped_rfqs")
+}
+
+model GroupedRFQVendor {
+  id           String    @id @default(uuid())
+  groupedRfqId String    @map("grouped_rfq_id")
+  vendorId     String    @map("vendor_id")
+  accessToken  String    @unique @map("access_token")
+  viewedAt     DateTime? @map("viewed_at")
+  submittedAt  DateTime? @map("submitted_at")
+  overallNotes String?   @map("overall_notes")
+
+  groupedRfq GroupedRFQ        @relation(fields: [groupedRfqId], references: [id], onDelete: Cascade)
+  vendor     Vendor             @relation(fields: [vendorId], references: [id])
+  partQuotes GroupedPartQuote[]
+
+  @@unique([groupedRfqId, vendorId])
+  @@index([groupedRfqId])
+  @@map("grouped_rfq_vendors")
+}
+
+model GroupedRFQPart {
+  id           String @id @default(uuid())
+  groupedRfqId String @map("grouped_rfq_id")
+  partId       String @map("part_id")
+
+  groupedRfq GroupedRFQ         @relation(fields: [groupedRfqId], references: [id], onDelete: Cascade)
+  part       Part               @relation(fields: [partId], references: [id], onDelete: Cascade)
+  partQuotes GroupedPartQuote[]
+
+  @@unique([groupedRfqId, partId])
+  @@index([groupedRfqId])
+  @@map("grouped_rfq_parts")
+}
+
+model GroupedPartQuote {
+  id               String   @id @default(uuid())
+  groupedRfqPartId String   @map("grouped_rfq_part_id")
+  vendorRfqId      String   @map("vendor_rfq_id")
+  unitPriceUsd     Float?   @map("unit_price_usd")
+  leadTimeDays     Int?     @map("lead_time_days")
+  notes            String?
+  quoteBreakdown   Json?    @map("quote_breakdown")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  groupedRfqPart   GroupedRFQPart   @relation(fields: [groupedRfqPartId], references: [id], onDelete: Cascade)
+  groupedRfqVendor GroupedRFQVendor @relation(fields: [vendorRfqId], references: [id], onDelete: Cascade)
+
+  @@unique([groupedRfqPartId, vendorRfqId])
+  @@index([groupedRfqPartId])
+  @@map("grouped_part_quotes")
+}
+
+enum RFQStatus {
+  SENT
+  VIEWED
+  QUOTED
+  CLOSED
+}
+
+model VendorQuote {
+  id             String   @id @default(uuid())
+  rfqId          String   @unique @map("rfq_id")
+  unitPriceUsd   Float    @map("unit_price_usd")
+  leadTimeDays   Int      @map("lead_time_days")
+  notes          String?
+  quoteBreakdown Json?    @map("quote_breakdown")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  rfq           RFQ            @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  pricingModels PricingModel[]
+
+  @@map("vendor_quotes")
+}
+
+// ============================================================
+// PRICING
+// ============================================================
+
+model PricingModel {
+  id                     String   @id @default(uuid())
+  partId                 String   @unique @map("part_id")
+  selectedVendorQuoteId  String?  @map("selected_vendor_quote_id")
+  selectedGroupedQuoteId String?  @map("selected_grouped_quote_id")
+  selectedVendorName     String?  @map("selected_vendor_name")
+  selectedLeadTimeDays   Int?     @map("selected_lead_time_days")
+  vendorUnitPriceUsd     Float    @map("vendor_unit_price_usd")
+  marginPercent          Float    @map("margin_percent")
+  clientUnitPriceUsd     Float    @map("client_unit_price_usd")
+  quantity               Int      @default(1)
+  totalPriceUsd          Float    @map("total_price_usd")
+  locked                 Boolean  @default(false)
+  createdAt              DateTime @default(now()) @map("created_at")
+
+  part                Part         @relation(fields: [partId], references: [id], onDelete: Cascade)
+  selectedVendorQuote VendorQuote? @relation(fields: [selectedVendorQuoteId], references: [id])
+  clientQuote         ClientQuote?
+
+  @@map("pricing_models")
+}
+
+model ClientQuote {
+  id             String      @id @default(uuid())
+  pricingModelId String      @unique @map("pricing_model_id")
+  accessToken    String      @unique @map("access_token")
+  unitPriceUsd   Float       @map("unit_price_usd")
+  quantity       Int
+  totalPriceUsd  Float       @map("total_price_usd")
+  leadTimeDays   Int         @map("lead_time_days")
+  notes          String?
+  status         QuoteStatus
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  pricingModel PricingModel @relation(fields: [pricingModelId], references: [id], onDelete: Cascade)
+
+  @@map("client_quotes")
+}
+
+enum QuoteStatus {
+  SENT
+  ACCEPTED
+  REJECTED
+}
+
+// ============================================================
+// MANUFACTURING EXECUTION
+// ============================================================
+
+model ManufacturingPlan {
+  id                 String    @id @default(uuid())
+  publicId           String    @unique @map("public_id")
+  partId             String    @unique @map("part_id")
+  locked             Boolean   @default(false)
+  totalBlocks        Int       @default(0) @map("total_blocks")
+  completedBlocks    Int       @default(0) @map("completed_blocks")
+  startedAt          DateTime? @map("started_at")
+  completedAt        DateTime? @map("completed_at")
+  vendorInviteSentAt DateTime? @map("vendor_invite_sent_at")
+  vendorInviteEmail  String?   @map("vendor_invite_email")
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  part   Part        @relation(fields: [partId], references: [id], onDelete: Cascade)
+  blocks PlanBlock[]
+
+  @@map("manufacturing_plans")
+}
+
+model PlanBlock {
+  id             String         @id @default(uuid())
+  planId         String         @map("plan_id")
+  blockOrder     Int            @map("block_order")
+  type           BlockType
+  processName    String?        @map("process_name")
+  vendorId       String?        @map("vendor_id")
+  status         BlockStatus    @default(PENDING)
+  inspectorType  InspectorType? @map("inspector_type")
+  emailEnabled   Boolean        @default(false) @map("email_enabled")
+  emailRecipient String?        @map("email_recipient")
+  emailTemplate  String?        @map("email_template")
+  emailContent   String?        @map("email_content")
+  emailTrigger   EmailTrigger?  @map("email_trigger")
+  deadline       DateTime?
+  startedAt      DateTime?      @map("started_at")
+  completedAt    DateTime?      @map("completed_at")
+  stepData       Json?          @map("step_data")
+  notes          String?
+  scheduledDate  DateTime?      @map("scheduled_date")
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  plan             ManufacturingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  vendor           Vendor?           @relation(fields: [vendorId], references: [id])
+  inspectionResult InspectionResult?
+  blockDimensions  BlockDimension[]
+  stepLogs         StepLog[]
+  emailLogs        BlockEmailLog[]
+
+  @@index([planId])
+  @@index([status])
+  @@map("plan_blocks")
+}
+
+enum BlockType {
+  MANUFACTURING
+  INSPECTION
+  EMAIL
+  MATERIAL
+  POST_PROCESSING
+  REWORK
+}
+
+enum BlockStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  FAILED
+}
+
+enum EmailTrigger {
+  START
+  COMPLETE
+}
+
+model StepLog {
+  id        String   @id @default(uuid())
+  blockId   String   @map("block_id")
+  field     String
+  oldValue  Json?    @map("old_value")
+  newValue  Json     @map("new_value")
+  userId    String?  @map("user_id")
+  timestamp DateTime @default(now())
+
+  block PlanBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  @@index([blockId])
+  @@map("step_logs")
+}
+
+model ProcessTemplate {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  steps       Json
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("process_templates")
+}
+
+// ============================================================
+// INSPECTION
+// ============================================================
+
+model InspectionResult {
+  id            String            @id @default(uuid())
+  blockId       String            @unique @map("block_id")
+  inspectorType InspectorType     @map("inspector_type")
+  result        InspectionOutcome
+  notes         String?
+  reportPath    String?           @map("report_path")
+  inspectedAt   DateTime          @default(now()) @map("inspected_at")
+
+  block  PlanBlock         @relation(fields: [blockId], references: [id])
+  photos InspectionPhoto[]
+
+  @@map("inspection_results")
+}
+
+model InspectionPhoto {
+  id        String   @id @default(uuid())
+  resultId  String   @map("result_id")
+  fileName  String   @map("file_name")
+  filePath  String   @map("file_path")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  result InspectionResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+
+  @@map("inspection_photos")
+}
+
+enum InspectorType {
+  INTERNAL
+  VENDOR
+}
+
+enum InspectionOutcome {
+  PASS
+  FAIL
+}
+
+// ============================================================
+// DIMENSIONS
+// ============================================================
+
+model Dimension {
+  id        String   @id @default(uuid())
+  partId    String   @map("part_id")
+  name      String
+  rawText   String   @map("raw_text")
+  page      Int      @default(1)
+  rectX     Float    @map("rect_x")
+  rectY     Float    @map("rect_y")
+  rectW     Float    @map("rect_w")
+  rectH     Float    @map("rect_h")
+  dimOrder  Int      @default(0) @map("dim_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  part            Part             @relation(fields: [partId], references: [id], onDelete: Cascade)
+  blockDimensions BlockDimension[]
+
+  @@index([partId])
+  @@map("dimensions")
+}
+
+model BlockDimension {
+  id            String             @id @default(uuid())
+  blockId       String             @map("block_id")
+  dimensionId   String             @map("dimension_id")
+  measuredValue String?            @map("measured_value")
+  result        InspectionOutcome?
+
+  block     PlanBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  dimension Dimension @relation(fields: [dimensionId], references: [id], onDelete: Cascade)
+
+  @@unique([blockId, dimensionId])
+  @@index([blockId])
+  @@map("block_dimensions")
+}
+
+// ============================================================
+// EMAIL LOGS & DOCUMENTS
+// ============================================================
+
+model OrderEmailLog {
+  id             String   @id @default(uuid())
+  orderId        String   @map("order_id")
+  templateKey    String?  @map("template_key")
+  subject        String
+  body           String?
+  recipientEmail String   @map("recipient_email")
+  recipientName  String?  @map("recipient_name")
+  sentAt         DateTime @default(now()) @map("sent_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("order_email_logs")
+}
+
+model BlockEmailLog {
+  id         String   @id @default(uuid())
+  blockId    String   @map("block_id")
+  recipient  String
+  templateId String   @map("template_id")
+  status     String
+  error      String?
+  sentAt     DateTime @default(now()) @map("sent_at")
+
+  block PlanBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  @@index([blockId])
+  @@map("block_email_logs")
+}
+
+model Document {
+  id             String       @id @default(uuid())
+  orderId        String       @map("order_id")
+  documentType   DocumentType @map("document_type")
+  documentNumber String?      @map("document_number")
+  filePath       String?      @map("file_path")
+  url            String?
+  notes          String?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("documents")
+}
+
+enum DocumentType {
+  QUOTATION
+  SALES_ORDER
+  PURCHASE_ORDER
+  DELIVERY_CHALLAN_CLIENT
+  DELIVERY_CHALLAN_MECHXIMIZE
+  INVOICE
+  INSPECTION_REPORT
+  CLIENT_PO
+  OTHER
+}
+
+// ============================================================
+// EMAIL TEMPLATES
+// ============================================================
+
+model EmailTemplate {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  displayName String   @map("display_name")
+  subject     String
+  body        String
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("email_templates")
+}
+
