@@ -34,9 +34,9 @@ export async function POST(
   const result = await sendEmail({ to: recipientEmail, subject, html: textToHtml(body) });
 
   // Log regardless of SMTP success (so we have a record of attempts)
-  const log = await prisma.orderEmailLog.create({
+  const log = await prisma.emailLog.create({
     data: {
-      orderId: id,
+      salesOrderId: id,
       templateKey: templateKey ?? null,
       subject,
       body,

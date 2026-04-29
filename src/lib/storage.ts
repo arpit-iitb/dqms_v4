@@ -6,7 +6,7 @@ function getUploadDir(): string {
   return dir;
 }
 
-export function ensureDir(subdir: "originals" | "masked"): string {
+export function ensureDir(subdir: "originals" | "masked" | "documents" | "inspections"): string {
   const base = getUploadDir();
   const full = path.join(base, subdir);
   if (!fs.existsSync(full)) {
@@ -18,7 +18,7 @@ export function ensureDir(subdir: "originals" | "masked"): string {
 export async function saveFile(
   buffer: Buffer,
   fileName: string,
-  subdir: "originals" | "masked"
+  subdir: "originals" | "masked" | "documents" | "inspections"
 ): Promise<string> {
   const dir = ensureDir(subdir);
   const filePath = path.join(dir, fileName);

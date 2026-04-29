@@ -16,7 +16,7 @@ export async function GET(
       vendor: true,
       groupedRfq: {
         include: {
-          order: { select: { displayId: true } },
+          lead: { select: { displayId: true } },
           parts: {
             include: {
               part: {
@@ -66,13 +66,27 @@ export async function GET(
   });
   const partsWithDrawing = new Set(maskedDerivatives.map((d) => d.file.partId));
 
+  // Check which parts have STEP files
+  const stepFiles = await prisma.file.findMany({
+    where: {
+      partId: { in: partIds },
+      fileType: "STEP",
+      isLatest: true,
+    },
+    select: { id: true, partId: true },
+  });
+  const stepByPartId: Record<string, string> = {};
+  for (const sf of stepFiles) {
+    stepByPartId[sf.partId] = sf.id;
+  }
+
   return NextResponse.json({
     rfq: {
       id: vendorRfq.groupedRfq.id,
       publicId: vendorRfq.groupedRfq.publicId,
       dueDate: vendorRfq.groupedRfq.dueDate,
       coverNote: vendorRfq.groupedRfq.coverNote,
-      orderDisplayId: vendorRfq.groupedRfq.order.displayId,
+      leadDisplayId: vendorRfq.groupedRfq.lead.displayId,
       locked: vendorRfq.groupedRfq.locked,
       status: vendorRfq.groupedRfq.status,
     },
@@ -88,6 +102,8 @@ export async function GET(
       part: gp.part,
       existingQuote: quotesByPartId[gp.id] ?? null,
       hasDrawing: partsWithDrawing.has(gp.part.id),
+      hasStep: !!stepByPartId[gp.part.id],
+      stepFileId: stepByPartId[gp.part.id] ?? null,
     })),
   });
 }

@@ -4,7 +4,7 @@ import { isConfigured, zohoPost } from "@/lib/zoho";
 
 // POST /api/parts/[id]/pricing/zoho-estimate
 // Body: { customerId, referenceNumber? }
-// Creates a Zoho estimate for this part's locked pricing and saves the estimate ID to the order.
+// Creates a Zoho estimate for this part's locked pricing and saves the estimate ID to the lead.
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -24,7 +24,7 @@ export async function POST(
     where: { id },
     include: {
       pricingModel: true,
-      order: { select: { id: true, publicId: true, displayId: true } },
+      lead: { select: { id: true, publicId: true, displayId: true } },
       files: {
         where: { fileType: "DRAWING_PDF", isLatest: true },
         orderBy: { createdAt: "desc" },
@@ -45,7 +45,7 @@ export async function POST(
   const payload = {
     customer_id: customerId,
     date: new Date().toISOString().slice(0, 10),
-    reference_number: referenceNumber || part.order.displayId,
+    reference_number: referenceNumber || part.lead?.displayId || part.publicId,
     line_items: [
       {
         name: itemName,
@@ -64,11 +64,13 @@ export async function POST(
     return NextResponse.json({ error: err.message || "Zoho API error" }, { status: 502 });
   }
 
-  // Save estimate ID to order
-  await prisma.order.update({
-    where: { id: part.order.id },
-    data: { zohoQuotationId: estimate.estimate_id },
-  });
+  // Save estimate ID to lead
+  if (part.lead) {
+    await prisma.lead.update({
+      where: { id: part.lead.id },
+      data: { zohoQuotationId: estimate.estimate_id },
+    });
+  }
 
   return NextResponse.json({
     estimateId: estimate.estimate_id,

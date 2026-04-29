@@ -10,7 +10,8 @@ import {
 import {
   Plus, ChevronDown, ChevronUp, CheckCircle2, Circle, Trash2,
   Package, Wrench, FlaskConical, Sparkles, RefreshCw, Clock,
-  XCircle, AlertCircle, Ruler, LayoutTemplate, Edit2,
+  XCircle, AlertCircle, Ruler, LayoutTemplate, Edit2, Lock,
+  Upload, FileText, Image, X,
 } from "lucide-react";
 import {
   BlockType, BlockStatus, StepData, CheckEntry,
@@ -104,56 +105,57 @@ function CheckRow({ label, entry, onToggle }: { label: string; entry: CheckEntry
   );
 }
 
-function StepChecklist({ data, onToggleCheck }: { data: StepData; onToggleCheck: (path: string) => void }) {
+function StepChecklist({ data, onToggleCheck, disabled }: { data: StepData; onToggleCheck: (path: string) => void; disabled?: boolean }) {
+  const toggle = (path: string) => { if (!disabled) onToggleCheck(path); };
   switch (data.type) {
     case "MATERIAL":
       return (
-        <div className="space-y-0.5">
-          <CheckRow label="Pickup Scheduled" entry={data.pickupScheduled} onToggle={() => onToggleCheck("pickupScheduled")} />
-          <CheckRow label="Material Received" entry={data.materialReceived} onToggle={() => onToggleCheck("materialReceived")} />
-          <CheckRow label="Delivery Challan Received" entry={data.deliveryChallanReceived} onToggle={() => onToggleCheck("deliveryChallanReceived")} />
+        <div className={`space-y-0.5 ${disabled ? "pointer-events-none opacity-60" : ""}`}>
+          <CheckRow label="Pickup Scheduled" entry={data.pickupScheduled} onToggle={() => toggle("pickupScheduled")} />
+          <CheckRow label="Material Received" entry={data.materialReceived} onToggle={() => toggle("materialReceived")} />
+          <CheckRow label="Delivery Challan Received" entry={data.deliveryChallanReceived} onToggle={() => toggle("deliveryChallanReceived")} />
         </div>
       );
     case "MANUFACTURING":
       return (
-        <div className="space-y-0.5">
-          <CheckRow label="Material Received by Vendor" entry={data.materialReceivedByVendor} onToggle={() => onToggleCheck("materialReceivedByVendor")} />
-          <CheckRow label="Material Inspected by Vendor" entry={data.materialInspectedByVendor} onToggle={() => onToggleCheck("materialInspectedByVendor")} />
-          <CheckRow label="Manufacturing Initiated" entry={data.manufacturingInitiated} onToggle={() => onToggleCheck("manufacturingInitiated")} />
-          <CheckRow label="Manufacturing Completed" entry={data.manufacturingCompleted} onToggle={() => onToggleCheck("manufacturingCompleted")} />
-          <CheckRow label="Inspected by Vendor" entry={data.inspectedByVendor} onToggle={() => onToggleCheck("inspectedByVendor")} />
-          <CheckRow label="Dispatched" entry={data.dispatched} onToggle={() => onToggleCheck("dispatched")} />
+        <div className={`space-y-0.5 ${disabled ? "pointer-events-none opacity-60" : ""}`}>
+          <CheckRow label="Material Received by Vendor" entry={data.materialReceivedByVendor} onToggle={() => toggle("materialReceivedByVendor")} />
+          <CheckRow label="Material Inspected by Vendor" entry={data.materialInspectedByVendor} onToggle={() => toggle("materialInspectedByVendor")} />
+          <CheckRow label="Manufacturing Initiated" entry={data.manufacturingInitiated} onToggle={() => toggle("manufacturingInitiated")} />
+          <CheckRow label="Manufacturing Completed" entry={data.manufacturingCompleted} onToggle={() => toggle("manufacturingCompleted")} />
+          <CheckRow label="Inspected by Vendor" entry={data.inspectedByVendor} onToggle={() => toggle("inspectedByVendor")} />
+          <CheckRow label="Dispatched" entry={data.dispatched} onToggle={() => toggle("dispatched")} />
         </div>
       );
     case "INSPECTION":
       return (
-        <div className="space-y-0.5">
+        <div className={`space-y-0.5 ${disabled ? "pointer-events-none opacity-60" : ""}`}>
           <p className="text-xs text-muted-foreground mb-1">{INSPECTION_TYPE_LABELS[data.inspectionType]}</p>
-          <CheckRow label="Slot Booked" entry={data.slotBooked} onToggle={() => onToggleCheck("slotBooked")} />
-          <CheckRow label="Material Received by Inspector" entry={data.materialReceivedByVendor} onToggle={() => onToggleCheck("materialReceivedByVendor")} />
-          <CheckRow label="Inspection Completed" entry={data.inspectionCompleted} onToggle={() => onToggleCheck("inspectionCompleted")} />
-          <CheckRow label="Report Shared" entry={data.reportShared} onToggle={() => onToggleCheck("reportShared")} />
-          <CheckRow label="Dispatched" entry={data.dispatched} onToggle={() => onToggleCheck("dispatched")} />
+          <CheckRow label="Slot Booked" entry={data.slotBooked} onToggle={() => toggle("slotBooked")} />
+          <CheckRow label="Material Received by Inspector" entry={data.materialReceivedByVendor} onToggle={() => toggle("materialReceivedByVendor")} />
+          <CheckRow label="Inspection Completed" entry={data.inspectionCompleted} onToggle={() => toggle("inspectionCompleted")} />
+          <CheckRow label="Report Shared" entry={data.reportShared} onToggle={() => toggle("reportShared")} />
+          <CheckRow label="Dispatched" entry={data.dispatched} onToggle={() => toggle("dispatched")} />
         </div>
       );
     case "POST_PROCESSING":
       return (
-        <div className="space-y-0.5">
+        <div className={`space-y-0.5 ${disabled ? "pointer-events-none opacity-60" : ""}`}>
           <p className="text-xs text-muted-foreground mb-1">{POST_PROCESSING_TYPE_LABELS[data.processType]}</p>
-          <CheckRow label="Material Received by Vendor" entry={data.materialReceivedByVendor} onToggle={() => onToggleCheck("materialReceivedByVendor")} />
-          <CheckRow label="Post Processing Completed" entry={data.postProcessingCompleted} onToggle={() => onToggleCheck("postProcessingCompleted")} />
-          <CheckRow label="Dispatched" entry={data.dispatched} onToggle={() => onToggleCheck("dispatched")} />
+          <CheckRow label="Material Received by Vendor" entry={data.materialReceivedByVendor} onToggle={() => toggle("materialReceivedByVendor")} />
+          <CheckRow label="Post Processing Completed" entry={data.postProcessingCompleted} onToggle={() => toggle("postProcessingCompleted")} />
+          <CheckRow label="Dispatched" entry={data.dispatched} onToggle={() => toggle("dispatched")} />
         </div>
       );
     case "REWORK":
       return (
-        <div className="space-y-0.5">
-          <CheckRow label="CAPA Completed" entry={data.capaCompleted} onToggle={() => onToggleCheck("capaCompleted")} />
-          <CheckRow label="Material Received by Vendor" entry={data.materialReceivedByVendor} onToggle={() => onToggleCheck("materialReceivedByVendor")} />
-          <CheckRow label="Rework Initiated" entry={data.reworkInitiated} onToggle={() => onToggleCheck("reworkInitiated")} />
-          <CheckRow label="Rework Completed" entry={data.reworkCompleted} onToggle={() => onToggleCheck("reworkCompleted")} />
-          <CheckRow label="Inspected by Vendor" entry={data.inspectedByVendor} onToggle={() => onToggleCheck("inspectedByVendor")} />
-          <CheckRow label="Dispatched" entry={data.dispatched} onToggle={() => onToggleCheck("dispatched")} />
+        <div className={`space-y-0.5 ${disabled ? "pointer-events-none opacity-60" : ""}`}>
+          <CheckRow label="CAPA Completed" entry={data.capaCompleted} onToggle={() => toggle("capaCompleted")} />
+          <CheckRow label="Material Received by Vendor" entry={data.materialReceivedByVendor} onToggle={() => toggle("materialReceivedByVendor")} />
+          <CheckRow label="Rework Initiated" entry={data.reworkInitiated} onToggle={() => toggle("reworkInitiated")} />
+          <CheckRow label="Rework Completed" entry={data.reworkCompleted} onToggle={() => toggle("reworkCompleted")} />
+          <CheckRow label="Inspected by Vendor" entry={data.inspectedByVendor} onToggle={() => toggle("inspectedByVendor")} />
+          <CheckRow label="Dispatched" entry={data.dispatched} onToggle={() => toggle("dispatched")} />
         </div>
       );
     default:
@@ -165,6 +167,13 @@ const INSPECTOR_LABELS: Record<string, string> = {
   IN_HOUSE: "In-house", THIRD_PARTY: "Third Party", CLIENT: "Client",
 };
 
+interface InspectionFile {
+  id: string;
+  fileName: string;
+  filePath: string;
+  createdAt: string;
+}
+
 function InspectionPanel({ block, planId, onUpdate }: { block: PlanBlock; planId: string; onUpdate: () => void }) {
   const [form, setForm] = useState({
     inspectorType: block.inspectionResult?.inspectorType ?? "IN_HOUSE",
@@ -172,6 +181,30 @@ function InspectionPanel({ block, planId, onUpdate }: { block: PlanBlock; planId
     notes: block.inspectionResult?.notes ?? "",
   });
   const [saving, setSaving] = useState(false);
+
+  // File upload state
+  const [reportPath, setReportPath] = useState<string | null>(null);
+  const [photos, setPhotos] = useState<InspectionFile[]>([]);
+  const [uploading, setUploading] = useState(false);
+
+  const filesUrl = `/api/plans/${planId}/blocks/${block.id}/inspection/files`;
+
+  const loadFiles = useCallback(async () => {
+    try {
+      const res = await fetch(filesUrl);
+      if (res.ok) {
+        const data = await res.json();
+        setReportPath(data.reportPath ?? null);
+        setPhotos(data.photos ?? []);
+      }
+    } catch {
+      // ignore
+    }
+  }, [filesUrl]);
+
+  useEffect(() => {
+    loadFiles();
+  }, [loadFiles]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -182,6 +215,21 @@ function InspectionPanel({ block, planId, onUpdate }: { block: PlanBlock; planId
     });
     setSaving(false);
     onUpdate();
+  };
+
+  const uploadFile = async (file: File, type: "report" | "photo") => {
+    setUploading(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("type", type);
+    await fetch(filesUrl, { method: "POST", body: fd });
+    setUploading(false);
+    loadFiles();
+  };
+
+  const deletePhoto = async (photoId: string) => {
+    await fetch(`${filesUrl}?photoId=${photoId}`, { method: "DELETE" });
+    loadFiles();
   };
 
   const existing = block.inspectionResult;
@@ -236,6 +284,90 @@ function InspectionPanel({ block, planId, onUpdate }: { block: PlanBlock; planId
       <Button size="sm" onClick={handleSave} disabled={saving} className="w-full">
         {saving ? "Saving..." : existing ? "Update Inspection" : "Record Inspection"}
       </Button>
+
+      {/* --- File Attachments --- */}
+      <div className="pt-2 border-t space-y-2">
+        <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Attachments</p>
+
+        {/* Report PDF */}
+        <div className="flex items-center gap-2">
+          {reportPath ? (
+            <a
+              href={`/api/uploads/${reportPath}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-xs text-blue-600 hover:underline"
+            >
+              <FileText className="h-3.5 w-3.5" /> View Report (PDF)
+            </a>
+          ) : (
+            <span className="text-xs text-muted-foreground">No report uploaded</span>
+          )}
+          <label className="ml-auto cursor-pointer">
+            <input
+              type="file"
+              accept=".pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) uploadFile(f, "report");
+                e.target.value = "";
+              }}
+            />
+            <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-input hover:bg-slate-50 transition-colors cursor-pointer">
+              <Upload className="h-3 w-3" /> {reportPath ? "Replace" : "Upload"} PDF
+            </span>
+          </label>
+        </div>
+
+        {/* Photos */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">{photos.length} photo{photos.length !== 1 ? "s" : ""}</span>
+            <label className="cursor-pointer">
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadFile(f, "photo");
+                  e.target.value = "";
+                }}
+              />
+              <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-input hover:bg-slate-50 transition-colors cursor-pointer">
+                <Image className="h-3 w-3" /> Upload Photo
+              </span>
+            </label>
+          </div>
+          {photos.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {photos.map((p) => (
+                <div key={p.id} className="relative group">
+                  <a href={`/api/uploads/${p.filePath}`} target="_blank" rel="noopener noreferrer">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`/api/uploads/${p.filePath}`}
+                      alt={p.fileName}
+                      className="h-16 w-16 object-cover rounded border border-slate-200"
+                    />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => deletePhoto(p.id)}
+                    className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Delete photo"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {uploading && <p className="text-xs text-blue-600">Uploading...</p>}
+      </div>
     </div>
   );
 }
@@ -477,7 +609,7 @@ function DimensionMeasurementPanel({ blockId, planId, partId }: { blockId: strin
   );
 }
 
-function BlockEditPanel({ block, planId, onUpdate }: { block: PlanBlock; planId: string; onUpdate: () => void }) {
+function BlockEditPanel({ block, planId, onUpdate, locked }: { block: PlanBlock; planId: string; onUpdate: () => void; locked?: boolean }) {
   const [form, setForm] = useState({
     processName: block.processName ?? "",
     notes: block.notes ?? "",
@@ -492,9 +624,12 @@ function BlockEditPanel({ block, planId, onUpdate }: { block: PlanBlock; planId:
     fetch("/api/vendors").then((r) => r.json()).then((d) => setVendors(d.vendors ?? []));
   }, []);
 
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const handleSave = async () => {
     setSaving(true);
-    await fetch(`/api/plans/${planId}/blocks/${block.id}`, {
+    setSaveError(null);
+    const res = await fetch(`/api/plans/${planId}/blocks/${block.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -506,12 +641,22 @@ function BlockEditPanel({ block, planId, onUpdate }: { block: PlanBlock; planId:
       }),
     });
     setSaving(false);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setSaveError(data.error ?? "Failed to save changes");
+      return;
+    }
     onUpdate();
   };
 
   return (
     <div className="mt-3 pt-3 border-t space-y-3">
       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Edit Step</p>
+      {saveError && (
+        <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5 flex items-center gap-1">
+          <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" /> {saveError}
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-2">
         <div className="col-span-2 space-y-1">
           <label className="text-xs text-muted-foreground">Step Name</label>
@@ -549,7 +694,8 @@ function BlockEditPanel({ block, planId, onUpdate }: { block: PlanBlock; planId:
           <select
             value={form.status}
             onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-            className="w-full h-8 rounded border border-input bg-background px-2 text-xs focus:outline-none"
+            className={`w-full h-8 rounded border border-input bg-background px-2 text-xs focus:outline-none ${locked ? "opacity-60" : ""}`}
+            disabled={locked}
           >
             <option value="PENDING">Pending</option>
             <option value="IN_PROGRESS">In Progress</option>
@@ -575,7 +721,7 @@ function BlockEditPanel({ block, planId, onUpdate }: { block: PlanBlock; planId:
   );
 }
 
-function BlockCard({ block, planId, partId, onUpdate }: { block: PlanBlock; planId: string; partId: string; onUpdate: () => void }) {
+function BlockCard({ block, planId, partId, onUpdate, locked }: { block: PlanBlock; planId: string; partId: string; onUpdate: () => void; locked?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -585,7 +731,7 @@ function BlockCard({ block, planId, partId, onUpdate }: { block: PlanBlock; plan
   const allDone = total > 0 && done === total;
 
   const toggleCheck = async (path: string) => {
-    if (!stepData) return;
+    if (!stepData || locked) return;
     const updated = JSON.parse(JSON.stringify(stepData)) as any;
     const entry = updated[path] as CheckEntry;
     entry.checked = !entry.checked;
@@ -596,11 +742,17 @@ function BlockCard({ block, planId, partId, onUpdate }: { block: PlanBlock; plan
     const newStatus = newDone === newTotal && newTotal > 0 ? "DONE"
       : newDone > 0 ? "IN_PROGRESS" : "PENDING";
 
-    await fetch(`/api/plans/${planId}/blocks/${block.id}`, {
+    const res = await fetch(`/api/plans/${planId}/blocks/${block.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ stepData: updated, status: newStatus }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error ?? "Failed to update step");
+      onUpdate();
+      return;
+    }
     onUpdate();
   };
 
@@ -614,15 +766,15 @@ function BlockCard({ block, planId, partId, onUpdate }: { block: PlanBlock; plan
   const statusColor = block.status === "DONE" ? "text-green-600" : block.status === "IN_PROGRESS" ? "text-blue-600" : "text-slate-400";
 
   return (
-    <Card className={`${allDone ? "border-green-200 bg-green-50/30" : ""}`}>
+    <Card className={`${allDone ? "border-green-200 bg-green-50/30" : ""} ${locked ? "opacity-60" : ""}`}>
       <CardContent className="p-0">
         {/* Header row */}
         <button
           className="w-full flex items-center gap-3 p-4 text-left hover:bg-slate-50/50 rounded-lg transition-colors"
           onClick={() => setExpanded((v) => !v)}
         >
-          <div className={`h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 ${BLOCK_TYPE_COLORS[block.type as BlockType]?.split(" ").slice(0, 1).join(" ") ?? "bg-slate-100"}`}>
-            <Icon className="h-4 w-4" />
+          <div className={`h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 ${locked ? "bg-slate-200" : BLOCK_TYPE_COLORS[block.type as BlockType]?.split(" ").slice(0, 1).join(" ") ?? "bg-slate-100"}`}>
+            {locked ? <Lock className="h-4 w-4 text-slate-500" /> : <Icon className="h-4 w-4" />}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
@@ -632,7 +784,8 @@ function BlockCard({ block, planId, partId, onUpdate }: { block: PlanBlock; plan
               <Badge className={`text-xs ${BLOCK_TYPE_COLORS[block.type as BlockType] ?? ""}`}>
                 {BLOCK_TYPE_LABELS[block.type as BlockType]}
               </Badge>
-              {allDone && <Badge className="text-xs bg-green-100 text-green-700 border-green-200">Done</Badge>}
+              {locked && <Badge className="text-xs bg-slate-200 text-slate-600 border-slate-300" title="Complete preceding steps to unlock">Locked</Badge>}
+              {allDone && !locked && <Badge className="text-xs bg-green-100 text-green-700 border-green-200">Done</Badge>}
               {block.type === "INSPECTION" && block.inspectionResult && (
                 <Badge className={`text-xs ${block.inspectionResult.result === "PASS" ? "bg-green-100 text-green-700 border-green-200" : "bg-red-100 text-red-600 border-red-200"}`}>
                   {block.inspectionResult.result === "PASS" ? "Pass" : block.inspectionResult.result === "FAIL" ? "Fail" : "Conditional"}
@@ -685,9 +838,15 @@ function BlockCard({ block, planId, partId, onUpdate }: { block: PlanBlock; plan
                 Deadline: {new Date(block.deadline).toLocaleDateString("en-IN")}
               </p>
             )}
+            {locked && (
+              <p className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 mt-3 flex items-center gap-1">
+                <Lock className="h-3 w-3" />
+                Complete preceding steps to unlock
+              </p>
+            )}
             {stepData && (
               <div className="pt-3">
-                <StepChecklist data={stepData} onToggleCheck={toggleCheck} />
+                <StepChecklist data={stepData} onToggleCheck={toggleCheck} disabled={locked} />
               </div>
             )}
             {block.notes && !editing && (
@@ -703,7 +862,7 @@ function BlockCard({ block, planId, partId, onUpdate }: { block: PlanBlock; plan
               <EmailConfigPanel block={block} planId={planId} onUpdate={onUpdate} />
             )}
             {editing && (
-              <BlockEditPanel block={block} planId={planId} onUpdate={() => { onUpdate(); setEditing(false); }} />
+              <BlockEditPanel block={block} planId={planId} onUpdate={() => { onUpdate(); setEditing(false); }} locked={locked} />
             )}
           </div>
         )}
@@ -835,9 +994,14 @@ export function StepsTab({ partId, plan, onUpdate }: Props) {
         </div>
       ) : (
         <div className="space-y-2">
-          {plan.blocks.map((block) => (
-            <BlockCard key={block.id} block={block} planId={plan.id} partId={partId} onUpdate={onUpdate} />
-          ))}
+          {plan.blocks.map((block) => {
+            const isLocked = plan.blocks.some(
+              (b) => b.blockOrder < block.blockOrder && b.status !== "DONE"
+            );
+            return (
+              <BlockCard key={block.id} block={block} planId={plan.id} partId={partId} onUpdate={onUpdate} locked={isLocked} />
+            );
+          })}
         </div>
       )}
 

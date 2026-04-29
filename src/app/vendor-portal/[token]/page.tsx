@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle2, Package, Calendar, ClipboardList, FileText } from "lucide-react";
+import { CheckCircle2, Package, Calendar, ClipboardList, FileText, Download } from "lucide-react";
 
 interface PartEntry {
   groupedRfqPartId: string;
@@ -25,6 +25,8 @@ interface PartEntry {
     notes: string | null;
   } | null;
   hasDrawing: boolean;
+  hasStep: boolean;
+  stepFileId: string | null;
 }
 
 interface RFQData {
@@ -235,17 +237,29 @@ export default function VendorPortalPage({
                           </div>
                         </div>
                       </div>
-                      {entry.hasDrawing && (
-                        <a
-                          href={`/api/vendor-portal/${token}/drawing/${entry.part.id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors flex-shrink-0"
-                        >
-                          <FileText className="h-3.5 w-3.5" />
-                          View Drawing
-                        </a>
-                      )}
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {entry.hasDrawing && (
+                          <a
+                            href={`/api/vendor-portal/${token}/drawing/${entry.part.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                            View Drawing
+                          </a>
+                        )}
+                        {entry.hasStep && (
+                          <a
+                            href={`/api/vendor-portal/${token}/step/${entry.part.id}`}
+                            download
+                            className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            Download STEP
+                          </a>
+                        )}
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">

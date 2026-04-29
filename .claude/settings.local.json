@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls /c/Users/uparp/Desktop/dqms_v3/dqms_v4/src/app/api/plans/[planId]/blocks/[blockId]/)",
+      "Bash(find /c/Users/uparp/Desktop/dqms_v3/dqms_v4/src/components/parts -name \"*.tsx\" -exec ls -lh {} \\\\;)",
+      "Bash(xargs grep *)",
+      "Bash(xargs wc *)",
+      "Bash(npx prisma *)",
+      "Bash(PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION=\"Proceed\" npx prisma db push --force-reset --accept-data-loss)",
+      "Bash(npx tsc *)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\uparp\\Desktop\\dqms_v3\\dqms_v4\\src\\app\\api\\leads\\[id]",
+      "C:\\Users\\uparp\\Desktop\\dqms_v3\\dqms_v4\\src\\app\\leads",
+      "C:\\Users\\uparp\\Desktop\\dqms_v3\\dqms_v4\\src\\app\\api\\documents\\[id]",
+      "C:\\Users\\uparp\\Desktop\\dqms_v3\\dqms_v4\\src\\app\\api\\plans\\[planId]\\blocks\\[blockId]\\inspection",
+      "C:\\Users\\uparp\\Desktop\\dqms_v3\\dqms_v4\\src\\app\\api\\vendor-portal\\[token]\\step",
+      "C:\\Users\\uparp\\Desktop\\dqms_v3\\dqms_v4\\src\\app\\api\\uploads"
+    ]
+  }
+}

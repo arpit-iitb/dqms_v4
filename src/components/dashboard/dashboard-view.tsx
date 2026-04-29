@@ -6,9 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   FileSearch, ClipboardList, AlertTriangle, TrendingUp,
-  ArrowRight, Clock, IndianRupee,
+  ArrowRight, Clock, IndianRupee, Trophy,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from "@/lib/lead-utils";
+import { SO_STATUS_LABELS, SO_STATUS_COLORS } from "@/lib/order-utils";
 
 interface DashboardStats {
   openLeads: number;
@@ -16,6 +18,8 @@ interface DashboardStats {
   overdueOrders: number;
   completedThisMonth: number;
   pendingClientQuotes: number;
+  wonLeadsThisMonth: number;
+  conversionRate: number;
   recentOrders: Array<{
     id: string;
     displayId: string;
@@ -35,37 +39,6 @@ interface DashboardStats {
   }>;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  LEAD: "bg-slate-100 text-slate-700",
-  QUOTATION_IN_PROGRESS: "bg-amber-100 text-amber-700",
-  RFQ_SENT: "bg-blue-100 text-blue-700",
-  QUOTED: "bg-purple-100 text-purple-700",
-  CLIENT_PROPOSAL_SENT: "bg-indigo-100 text-indigo-700",
-  ORDER_CONFIRMED: "bg-emerald-100 text-emerald-700",
-  IN_PRODUCTION: "bg-cyan-100 text-cyan-700",
-  INSPECTION: "bg-orange-100 text-orange-700",
-  READY_FOR_DISPATCH: "bg-teal-100 text-teal-700",
-  DISPATCHED: "bg-green-100 text-green-700",
-  COMPLETED: "bg-slate-100 text-slate-600",
-  LOST: "bg-red-100 text-red-600",
-  CANCELLED: "bg-red-100 text-red-600",
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  LEAD: "Lead",
-  QUOTATION_IN_PROGRESS: "Quotation",
-  RFQ_SENT: "RFQ Sent",
-  QUOTED: "Quoted",
-  CLIENT_PROPOSAL_SENT: "Proposal Sent",
-  ORDER_CONFIRMED: "Confirmed",
-  IN_PRODUCTION: "In Production",
-  INSPECTION: "Inspection",
-  READY_FOR_DISPATCH: "Ready",
-  DISPATCHED: "Dispatched",
-  COMPLETED: "Completed",
-  LOST: "Lost",
-  CANCELLED: "Cancelled",
-};
 
 function StatCard({
   title, value, icon: Icon, color, href,
@@ -121,12 +94,13 @@ export function DashboardView() {
   return (
     <div className="p-6 space-y-6 max-w-6xl">
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
         <StatCard title="Open Leads" value={stats.openLeads} icon={FileSearch} color="text-blue-600" href="/quotations" />
         <StatCard title="Active Orders" value={stats.activeOrders} icon={ClipboardList} color="text-emerald-600" href="/orders" />
         <StatCard title="Overdue" value={stats.overdueOrders} icon={AlertTriangle} color="text-red-600" href="/orders?filter=overdue" />
         <StatCard title="Completed (Month)" value={stats.completedThisMonth} icon={TrendingUp} color="text-slate-600" href="/orders?filter=completed" />
         <StatCard title="Pending Quotes" value={stats.pendingClientQuotes} icon={IndianRupee} color="text-amber-600" href="/quotations" />
+        <StatCard title="Won This Month" value={stats.wonLeadsThisMonth} icon={Trophy} color="text-emerald-600" href="/quotations?filter=won" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -146,7 +120,7 @@ export function DashboardView() {
                 {stats.recentLeads.map((lead) => (
                   <Link
                     key={lead.id}
-                    href={`/orders/${lead.id}`}
+                    href={`/leads/${lead.id}`}
                     className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors"
                   >
                     <div>
@@ -154,8 +128,8 @@ export function DashboardView() {
                       <p className="text-xs text-muted-foreground">{lead.clientName}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge className={`text-xs px-2 py-0.5 ${STATUS_COLORS[lead.status] || ""}`}>
-                        {STATUS_LABELS[lead.status] || lead.status}
+                      <Badge className={`text-xs px-2 py-0.5 ${LEAD_STATUS_COLORS[lead.status] || ""}`}>
+                        {LEAD_STATUS_LABELS[lead.status] || lead.status}
                       </Badge>
                       <span className="text-xs text-muted-foreground hidden sm:inline">
                         {formatDistanceToNow(new Date(lead.createdAt), { addSuffix: true })}
@@ -193,8 +167,8 @@ export function DashboardView() {
                     </div>
                     <div className="flex flex-col items-end gap-1">
                       <div className="flex items-center gap-2">
-                        <Badge className={`text-xs px-2 py-0.5 ${STATUS_COLORS[order.status] || ""}`}>
-                          {STATUS_LABELS[order.status] || order.status}
+                        <Badge className={`text-xs px-2 py-0.5 ${SO_STATUS_COLORS[order.status] || ""}`}>
+                          {SO_STATUS_LABELS[order.status] || order.status}
                         </Badge>
                         {order.deliveryDate && (
                           <span className="text-xs text-muted-foreground hidden sm:flex items-center gap-1">

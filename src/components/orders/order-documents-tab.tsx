@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,13 +8,14 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, FileText, ExternalLink, Trash2 } from "lucide-react";
+import { Plus, FileText, ExternalLink, Trash2, Download, Upload } from "lucide-react";
 
 interface Document {
   id: string;
   documentType: string;
   documentNumber: string | null;
   url: string | null;
+  filePath: string | null;
   notes: string | null;
   createdAt: string;
 }
@@ -52,18 +53,37 @@ interface Props {
 export function OrderDocumentsTab({ orderId, documents, onUpdate }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ documentType: "OTHER", documentNumber: "", url: "", notes: "" });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleAdd = async () => {
     setSaving(true);
-    await fetch(`/api/orders/${orderId}/documents`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
+
+    if (selectedFile) {
+      // Upload as multipart/form-data
+      const fd = new FormData();
+      fd.append("file", selectedFile);
+      fd.append("documentType", form.documentType);
+      fd.append("documentNumber", form.documentNumber);
+      fd.append("notes", form.notes);
+      await fetch(`/api/orders/${orderId}/documents`, {
+        method: "POST",
+        body: fd,
+      });
+    } else {
+      // Submit as JSON (URL-based)
+      await fetch(`/api/orders/${orderId}/documents`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+    }
+
     setSaving(false);
     setDialogOpen(false);
     setForm({ documentType: "OTHER", documentNumber: "", url: "", notes: "" });
+    setSelectedFile(null);
     onUpdate();
   };
 
@@ -102,9 +122,16 @@ export function OrderDocumentsTab({ orderId, documents, onUpdate }: Props) {
                 </div>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
+                {doc.filePath && (
+                  <a href={`/api/documents/${doc.id}/serve`} target="_blank" rel="noopener noreferrer">
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Download file">
+                      <Download className="h-3.5 w-3.5" />
+                    </Button>
+                  </a>
+                )}
                 {doc.url && (
                   <a href={doc.url} target="_blank" rel="noopener noreferrer">
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Open URL">
                       <ExternalLink className="h-3.5 w-3.5" />
                     </Button>
                   </a>
@@ -148,13 +175,60 @@ export function OrderDocumentsTab({ orderId, documents, onUpdate }: Props) {
               />
             </div>
             <div className="space-y-1">
-              <Label>URL (optional)</Label>
-              <Input
-                value={form.url}
-                onChange={(e) => setForm((p) => ({ ...p, url: e.target.value }))}
-                placeholder="https://..."
-              />
+              <Label>Upload File</Label>
+              <div
+                className={`border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition-colors ${
+                  selectedFile ? "border-blue-400 bg-blue-50" : "border-slate-200 hover:border-slate-300"
+                }`}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    setSelectedFile(file);
+                    if (file) {
+                      // Clear URL when a file is selected
+                      setForm((p) => ({ ...p, url: "" }));
+                    }
+                  }}
+                />
+                {selectedFile ? (
+                  <div className="flex items-center justify-center gap-2 text-sm text-blue-700">
+                    <Upload className="h-4 w-4" />
+                    <span className="truncate max-w-[200px]">{selectedFile.name}</span>
+                    <button
+                      type="button"
+                      className="text-xs text-red-500 hover:text-red-700 ml-1"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedFile(null);
+                        if (fileInputRef.current) fileInputRef.current.value = "";
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    <Upload className="h-4 w-4 mx-auto mb-1 opacity-50" />
+                    Click to select a file
+                  </p>
+                )}
+              </div>
             </div>
+            {!selectedFile && (
+              <div className="space-y-1">
+                <Label>URL (optional)</Label>
+                <Input
+                  value={form.url}
+                  onChange={(e) => setForm((p) => ({ ...p, url: e.target.value }))}
+                  placeholder="https://..."
+                />
+              </div>
+            )}
             <div className="space-y-1">
               <Label>Notes</Label>
               <Input

@@ -11,14 +11,12 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   ArrowLeft, Calendar, Clock, Edit, AlertTriangle, AlertCircle,
-  CheckCheck, Package, Trash2, Link2, FileSpreadsheet,
+  Package, Trash2,
 } from "lucide-react";
 import {
-  ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, PRODUCTION_STATUSES,
+  SO_STATUS_LABELS, SO_STATUS_COLORS, PRODUCTION_STATUSES, SO_MANUAL_NEXT,
   isOverdue, isDueWithinDays,
 } from "@/lib/order-utils";
 import { formatDistanceToNow, differenceInDays } from "date-fns";
@@ -28,6 +26,7 @@ import { OrderDocumentsTab } from "./order-documents-tab";
 import { OrderDispatchModule } from "./order-dispatch-module";
 import { OrderRFQTab } from "./order-rfq-tab";
 import { ZohoEstimateDialog } from "./zoho-estimate-dialog";
+import { ZohoActionsPanel } from "./zoho-actions-panel";
 
 interface Order {
   id: string;
@@ -40,34 +39,19 @@ interface Order {
   clientPoNumber: string | null;
   clientDcNumber: string | null;
   mechximizeDcNumber: string | null;
-  zohoQuotationId: string | null;
   zohoSalesOrderId: string | null;
   updateSchedule: string[];
   updatesDone: boolean[];
   dispatchModule: any;
   notes: string | null;
   client: { id: string; name: string; email: string; contactPerson: string | null };
+  lead?: { id: string; displayId: string } | null;
   parts: Array<{ id: string; publicId: string; state: string; partName: string | null; quantity: number; createdAt: string }>;
   emailLogs: any[];
   documents: any[];
 }
 
-const PRE_SALES_STATUSES = ["LEAD", "QUOTATION_IN_PROGRESS", "RFQ_SENT", "QUOTED", "CLIENT_PROPOSAL_SENT"];
-const FINAL_STATUSES = ["COMPLETED", "CANCELLED", "LOST", "DISPATCHED"];
-const MANUAL_NEXT: Record<string, string[]> = {
-  // Pre-sales funnel
-  LEAD: ["QUOTATION_IN_PROGRESS", "LOST"],
-  QUOTATION_IN_PROGRESS: ["RFQ_SENT", "CLIENT_PROPOSAL_SENT", "LOST"],
-  RFQ_SENT: ["QUOTED", "QUOTATION_IN_PROGRESS", "LOST"],
-  QUOTED: ["CLIENT_PROPOSAL_SENT", "LOST"],
-  CLIENT_PROPOSAL_SENT: ["ORDER_CONFIRMED", "LOST"],
-  // Production
-  ORDER_CONFIRMED: ["IN_PRODUCTION", "CANCELLED"],
-  IN_PRODUCTION: ["INSPECTION", "READY_FOR_DISPATCH", "CANCELLED"],
-  INSPECTION: ["READY_FOR_DISPATCH", "IN_PRODUCTION", "CANCELLED"],
-  READY_FOR_DISPATCH: ["DISPATCHED", "CANCELLED"],
-  DISPATCHED: ["COMPLETED"],
-};
+const FINAL_STATUSES = ["COMPLETED", "CANCELLED", "DISPATCHED"];
 
 export function OrderDetail({ orderId }: { orderId: string }) {
   const router = useRouter();
@@ -77,9 +61,6 @@ export function OrderDetail({ orderId }: { orderId: string }) {
   const [nextStatus, setNextStatus] = useState("");
   const [savingStatus, setSavingStatus] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [zohoDialogOpen, setZohoDialogOpen] = useState(false);
-  const [zohoForm, setZohoForm] = useState({ zohoQuotationId: "", zohoSalesOrderId: "" });
-  const [savingZoho, setSavingZoho] = useState(false);
   const [zohoEstimateDialogOpen, setZohoEstimateDialogOpen] = useState(false);
 
   const load = useCallback(() => {
@@ -118,24 +99,6 @@ export function OrderDetail({ orderId }: { orderId: string }) {
     await updateOrder({ updatesDone } as any);
   };
 
-  const openZohoDialog = () => {
-    setZohoForm({
-      zohoQuotationId: order?.zohoQuotationId ?? "",
-      zohoSalesOrderId: order?.zohoSalesOrderId ?? "",
-    });
-    setZohoDialogOpen(true);
-  };
-
-  const handleSaveZoho = async () => {
-    setSavingZoho(true);
-    await updateOrder({
-      zohoQuotationId: zohoForm.zohoQuotationId || null,
-      zohoSalesOrderId: zohoForm.zohoSalesOrderId || null,
-    } as any);
-    setSavingZoho(false);
-    setZohoDialogOpen(false);
-  };
-
   const handleDelete = async () => {
     if (!confirm(`Delete order ${order?.displayId}? This cannot be undone.`)) return;
     setDeleting(true);
@@ -162,7 +125,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
     ? differenceInDays(new Date(order.deliveryDate), new Date())
     : null;
   const isFinal = FINAL_STATUSES.includes(order.status);
-  const nextOptions = MANUAL_NEXT[order.status] ?? [];
+  const nextOptions = SO_MANUAL_NEXT[order.status] ?? [];
   const pendingUpdates = order.updateSchedule
     .map((date, i) => ({ date, index: i, done: order.updatesDone[i] ?? false }))
     .filter((u) => !u.done && new Date(u.date) <= new Date())
@@ -211,15 +174,9 @@ export function OrderDetail({ orderId }: { orderId: string }) {
 
       {/* Header */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        {PRE_SALES_STATUSES.includes(order.status) ? (
-          <Link href="/quotations" className="hover:text-slate-800 flex items-center gap-1">
-            <ArrowLeft className="h-4 w-4" /> Leads & Quotations
-          </Link>
-        ) : (
-          <Link href="/orders" className="hover:text-slate-800 flex items-center gap-1">
-            <ArrowLeft className="h-4 w-4" /> Orders
-          </Link>
-        )}
+        <Link href="/orders" className="hover:text-slate-800 flex items-center gap-1">
+          <ArrowLeft className="h-4 w-4" /> Orders
+        </Link>
         <span>/</span>
         <span className="font-mono font-semibold text-slate-800">{order.displayId}</span>
       </div>
@@ -235,20 +192,14 @@ export function OrderDetail({ orderId }: { orderId: string }) {
               </p>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-              <Badge className={`${ORDER_STATUS_COLORS[order.status]} text-sm px-3 py-1`}>
-                {ORDER_STATUS_LABELS[order.status] ?? order.status}
+              <Badge className={`${SO_STATUS_COLORS[order.status]} text-sm px-3 py-1`}>
+                {SO_STATUS_LABELS[order.status] ?? order.status}
               </Badge>
               {!isFinal && nextOptions.length > 0 && (
                 <Button variant="outline" size="sm" onClick={() => setStatusDialogOpen(true)}>
                   Update Status
                 </Button>
               )}
-              <Button variant="outline" size="sm" onClick={openZohoDialog}>
-                <Link2 className="h-3.5 w-3.5 mr-1" /> Zoho
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setZohoEstimateDialogOpen(true)}>
-                <FileSpreadsheet className="h-3.5 w-3.5 mr-1" /> Generate Estimate
-              </Button>
               <Link href={`/orders/${order.id}/edit`}>
                 <Button variant="outline" size="sm"><Edit className="h-3.5 w-3.5 mr-1" /> Edit</Button>
               </Link>
@@ -311,17 +262,35 @@ export function OrderDetail({ orderId }: { orderId: string }) {
             </div>
           )}
 
+          {/* Lead reference */}
+          {order.lead && (
+            <div className="mt-3 pt-3 border-t text-xs text-muted-foreground">
+              Converted from{" "}
+              <Link href={`/leads/${order.lead.id}`} className="font-mono text-blue-600 hover:underline">
+                {order.lead.displayId}
+              </Link>
+            </div>
+          )}
+
           {/* Reference numbers */}
-          {(order.clientDcNumber || order.mechximizeDcNumber || order.zohoQuotationId || order.zohoSalesOrderId) && (
+          {(order.clientDcNumber || order.mechximizeDcNumber) && (
             <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t text-xs text-muted-foreground">
-              {order.zohoQuotationId && <span>Zoho Quote: <span className="font-mono text-slate-700">{order.zohoQuotationId}</span></span>}
-              {order.zohoSalesOrderId && <span>Zoho SO: <span className="font-mono text-slate-700">{order.zohoSalesOrderId}</span></span>}
               {order.clientDcNumber && <span>Client DC: <span className="font-mono text-slate-700">{order.clientDcNumber}</span></span>}
               {order.mechximizeDcNumber && <span>Mechximize DC: <span className="font-mono text-slate-700">{order.mechximizeDcNumber}</span></span>}
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Zoho Actions Panel */}
+      <ZohoActionsPanel
+        entityType="salesOrder"
+        entityId={order.id}
+        zohoSalesOrderId={order.zohoSalesOrderId}
+        displayId={order.displayId}
+        onUpdate={load}
+        onOpenEstimateDialog={() => setZohoEstimateDialogOpen(true)}
+      />
 
       {/* Tabs */}
       <Tabs defaultValue="parts">
@@ -380,39 +349,6 @@ export function OrderDetail({ orderId }: { orderId: string }) {
         }}
       />
 
-      {/* Zoho linking dialog */}
-      <Dialog open={zohoDialogOpen} onOpenChange={setZohoDialogOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Link Zoho References</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1">
-              <Label className="text-xs">Zoho Quotation ID</Label>
-              <Input
-                placeholder="e.g. QT-00042"
-                value={zohoForm.zohoQuotationId}
-                onChange={(e) => setZohoForm((f) => ({ ...f, zohoQuotationId: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Zoho Sales Order ID</Label>
-              <Input
-                placeholder="e.g. SO-00042"
-                value={zohoForm.zohoSalesOrderId}
-                onChange={(e) => setZohoForm((f) => ({ ...f, zohoSalesOrderId: e.target.value }))}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setZohoDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSaveZoho} disabled={savingZoho}>
-              {savingZoho ? "Saving..." : "Save"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Status update dialog */}
       <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
         <DialogContent className="max-w-sm">
@@ -421,7 +357,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
           </DialogHeader>
           <div className="space-y-2 py-2">
             <p className="text-sm text-muted-foreground">
-              Current: <Badge className={ORDER_STATUS_COLORS[order.status]}>{ORDER_STATUS_LABELS[order.status]}</Badge>
+              Current: <Badge className={SO_STATUS_COLORS[order.status]}>{SO_STATUS_LABELS[order.status]}</Badge>
             </p>
             <div className="space-y-2">
               {nextOptions.map((s) => (
@@ -430,7 +366,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
                   onClick={() => setNextStatus(s === nextStatus ? "" : s)}
                   className={`w-full text-left rounded-lg border-2 p-3 text-sm font-semibold transition-colors ${nextStatus === s ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-200 hover:border-blue-300 text-slate-600"}`}
                 >
-                  {ORDER_STATUS_LABELS[s] ?? s}
+                  {SO_STATUS_LABELS[s] ?? s}
                 </button>
               ))}
             </div>

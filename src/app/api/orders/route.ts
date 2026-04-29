@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { generateOrderDisplayId, generatePublicId } from "@/lib/id-generator";
+import { generateSalesOrderDisplayId, generatePublicId } from "@/lib/id-generator";
+import { buildUpdateSchedule } from "@/lib/order-utils";
 
 const PRODUCTION_STATUSES = [
   "ORDER_CONFIRMED", "IN_PRODUCTION", "INSPECTION",
@@ -16,17 +17,9 @@ export async function GET(req: NextRequest) {
 
   const now = new Date();
 
-  const PRE_SALES_STATUSES = [
-    "LEAD", "QUOTATION_IN_PROGRESS", "RFQ_SENT", "QUOTED", "CLIENT_PROPOSAL_SENT",
-  ];
-
-  const pipeline = searchParams.get("pipeline");
-
   let whereStatus: any = {};
   if (statusParam) {
     whereStatus = { status: statusParam };
-  } else if (pipeline === "pre_sales") {
-    whereStatus = { status: { in: PRE_SALES_STATUSES } };
   } else if (filter === "overdue") {
     whereStatus = {
       status: { in: PRODUCTION_STATUSES },
@@ -37,7 +30,7 @@ export async function GET(req: NextRequest) {
     whereStatus = { status: "COMPLETED", updatedAt: { gte: startOfMonth } };
   }
 
-  const orders = await prisma.order.findMany({
+  const orders = await prisma.salesOrder.findMany({
     where: {
       ...whereStatus,
       ...(clientId ? { clientId } : {}),
@@ -54,6 +47,7 @@ export async function GET(req: NextRequest) {
     orderBy: { updatedAt: "desc" },
     include: {
       client: { select: { id: true, name: true, email: true } },
+      lead: { select: { id: true, displayId: true } },
       _count: { select: { parts: true } },
     },
   });
@@ -72,18 +66,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Client is required" }, { status: 400 });
   }
 
-  const displayId = await generateOrderDisplayId();
-  const order = await prisma.order.create({
+  const displayId = await generateSalesOrderDisplayId();
+
+  const effectiveOrderDate = orderDate ? new Date(orderDate) : new Date();
+  const effectiveDeliveryDate = deliveryDate ? new Date(deliveryDate) : null;
+
+  const updateSchedule =
+    effectiveDeliveryDate
+      ? buildUpdateSchedule(effectiveOrderDate.toISOString(), effectiveDeliveryDate.toISOString())
+      : [];
+
+  const order = await prisma.salesOrder.create({
     data: {
       publicId: generatePublicId("ORD"),
       displayId,
       clientId,
       status: status ?? "ORDER_CONFIRMED",
-      orderDate: orderDate ? new Date(orderDate) : new Date(),
-      deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
+      orderDate: effectiveOrderDate,
+      deliveryDate: effectiveDeliveryDate,
       deliveryDatePO: deliveryDatePO ? new Date(deliveryDatePO) : null,
       clientPoNumber: clientPoNumber || null,
       notes: notes || null,
+      updateSchedule,
+      updatesDone: updateSchedule.map(() => false),
     },
     include: { client: true },
   });

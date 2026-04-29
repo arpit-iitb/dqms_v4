@@ -7,10 +7,11 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  const order = await prisma.order.findUnique({
+  const order = await prisma.salesOrder.findUnique({
     where: { id },
     include: {
       client: true,
+      lead: { select: { id: true, displayId: true } },
       parts: { orderBy: { createdAt: "asc" } },
       emailLogs: { orderBy: { sentAt: "desc" }, take: 20 },
       documents: { orderBy: { createdAt: "desc" } },
@@ -31,11 +32,11 @@ export async function PATCH(
   const {
     status, orderDate, deliveryDate, deliveryDatePO,
     clientPoNumber, clientDcNumber, mechximizeDcNumber,
-    zohoQuotationId, zohoSalesOrderId, dispatchModule,
+    zohoSalesOrderId, dispatchModule,
     updateSchedule, updatesDone, notes,
   } = body;
 
-  const order = await prisma.order.update({
+  const order = await prisma.salesOrder.update({
     where: { id },
     data: {
       ...(status !== undefined && { status }),
@@ -45,7 +46,6 @@ export async function PATCH(
       ...(clientPoNumber !== undefined && { clientPoNumber }),
       ...(clientDcNumber !== undefined && { clientDcNumber }),
       ...(mechximizeDcNumber !== undefined && { mechximizeDcNumber }),
-      ...(zohoQuotationId !== undefined && { zohoQuotationId }),
       ...(zohoSalesOrderId !== undefined && { zohoSalesOrderId }),
       ...(dispatchModule !== undefined && { dispatchModule }),
       ...(updateSchedule !== undefined && { updateSchedule }),
@@ -63,6 +63,6 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  await prisma.order.delete({ where: { id } });
+  await prisma.salesOrder.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }

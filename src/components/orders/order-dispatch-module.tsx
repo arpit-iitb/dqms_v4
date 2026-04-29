@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,8 +54,20 @@ interface Order {
   clientDcNumber: string | null;
   mechximizeDcNumber: string | null;
   zohoSalesOrderId: string | null;
-  client: { id: string; name: string };
-  parts: Array<{ publicId: string; partName: string | null; quantity: number; pricingModel?: { clientUnitPriceUsd: number } }>;
+  client: { id: string; name: string; zohoContactId?: string | null };
+  parts: Array<{
+    publicId: string;
+    partName: string | null;
+    clientPartId?: string | null;
+    quantity: number;
+    pricingModel?: { clientUnitPriceUsd: number };
+  }>;
+}
+
+interface Vendor {
+  id: string;
+  name: string;
+  zohoContactId: string | null;
 }
 
 interface Props {
@@ -96,12 +108,28 @@ export function OrderDispatchModule({ order, onUpdate }: Props) {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [dcDialogOpen, setDcDialogOpen] = useState(false);
+  const [dcType, setDcType] = useState<"client" | "manufacturer">("client");
   const [dcForm, setDcForm] = useState({
     referenceNumber: order.clientDcNumber ?? "",
     mechximizeDcNumber: order.mechximizeDcNumber ?? "",
   });
+  const [selectedPartIds, setSelectedPartIds] = useState<Set<string>>(new Set());
+  const [vendorId, setVendorId] = useState("");
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [loadingVendors, setLoadingVendors] = useState(false);
   const [creatingDc, setCreatingDc] = useState(false);
   const [dcError, setDcError] = useState<string | null>(null);
+
+  // Load vendors when manufacturer DC is selected
+  useEffect(() => {
+    if (dcType === "manufacturer" && dcDialogOpen && vendors.length === 0) {
+      setLoadingVendors(true);
+      fetch("/api/vendors")
+        .then((r) => r.json())
+        .then((d) => setVendors(d.vendors ?? []))
+        .finally(() => setLoadingVendors(false));
+    }
+  }, [dcType, dcDialogOpen, vendors.length]);
 
   const toggleCheck = (key: keyof OrderDispatchModuleData) => {
     setData((prev) => {
@@ -150,14 +178,75 @@ export function OrderDispatchModule({ order, onUpdate }: Props) {
     onUpdate();
   };
 
+  const openDcDialog = () => {
+    setDcType("client");
+    setDcForm({
+      referenceNumber: order.clientDcNumber ?? "",
+      mechximizeDcNumber: order.mechximizeDcNumber ?? "",
+    });
+    setSelectedPartIds(new Set(order.parts.map((p) => p.publicId)));
+    setVendorId("");
+    setDcError(null);
+    setDcDialogOpen(true);
+  };
+
+  const togglePartSelection = (publicId: string) => {
+    setSelectedPartIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(publicId)) {
+        next.delete(publicId);
+      } else {
+        next.add(publicId);
+      }
+      return next;
+    });
+  };
+
+  const selectAllParts = () => {
+    setSelectedPartIds(new Set(order.parts.map((p) => p.publicId)));
+  };
+
+  const deselectAllParts = () => {
+    setSelectedPartIds(new Set());
+  };
+
+  const getPartDisplayName = (part: Order["parts"][number]) => {
+    if (dcType === "client") {
+      // Client DC: use partName or clientPartId (original names)
+      return part.partName || part.clientPartId || part.publicId;
+    }
+    // Manufacturer DC: use the Drawing ID (publicId)
+    return part.publicId;
+  };
+
+  const getRecipientId = () => {
+    if (dcType === "client") {
+      return (order.client as any).zohoContactId ?? order.client.id;
+    }
+    // Manufacturer DC: use selected vendor's zohoContactId
+    const selectedVendor = vendors.find((v) => v.id === vendorId);
+    return selectedVendor?.zohoContactId ?? vendorId;
+  };
+
   const handleCreateZohoDC = async () => {
+    if (selectedPartIds.size === 0) {
+      setDcError("Select at least one part");
+      return;
+    }
+    if (dcType === "manufacturer" && !vendorId) {
+      setDcError("Select a vendor for Manufacturer DC");
+      return;
+    }
+
     setCreatingDc(true);
     setDcError(null);
 
-    // Build line items from parts
-    const lineItems = order.parts.map((p) => ({
-      item_id: p.publicId, // fallback — Zoho item_id should ideally be a real Zoho item
-      name: p.partName ?? p.publicId,
+    const selectedParts = order.parts.filter((p) => selectedPartIds.has(p.publicId));
+
+    // Build line items from selected parts with appropriate naming
+    const lineItems = selectedParts.map((p) => ({
+      item_id: p.publicId,
+      name: getPartDisplayName(p),
       rate: (p as any).pricingModel?.clientUnitPriceUsd ?? 0,
       quantity: p.quantity,
     }));
@@ -166,7 +255,7 @@ export function OrderDispatchModule({ order, onUpdate }: Props) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        customer_id: (order.client as any).zohoContactId ?? order.client.id,
+        customer_id: getRecipientId(),
         salesorder_id: order.zohoSalesOrderId ?? undefined,
         reference_number: dcForm.referenceNumber || undefined,
         line_items: lineItems,
@@ -294,7 +383,7 @@ export function OrderDispatchModule({ order, onUpdate }: Props) {
                 size="sm"
                 variant="outline"
                 className="h-6 px-2 text-xs"
-                onClick={() => setDcDialogOpen(true)}
+                onClick={openDcDialog}
               >
                 <ExternalLink className="h-3 w-3 mr-1" /> Create Zoho DC
               </Button>
@@ -340,24 +429,124 @@ export function OrderDispatchModule({ order, onUpdate }: Props) {
 
       {/* Zoho DC Creation Dialog */}
       <Dialog open={dcDialogOpen} onOpenChange={setDcDialogOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Create Delivery Challan in Zoho</DialogTitle></DialogHeader>
           <div className="space-y-3 py-1">
+            {/* DC Type Selector */}
             <div className="space-y-1">
-              <Label className="text-xs">Client DC Reference Number (optional)</Label>
+              <Label className="text-xs font-semibold">DC Type</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDcType("client")}
+                  className={`rounded-lg border-2 p-2.5 text-sm font-medium transition-colors text-center ${
+                    dcType === "client"
+                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      : "border-slate-200 hover:border-blue-300 text-slate-600"
+                  }`}
+                >
+                  Client DC
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDcType("manufacturer")}
+                  className={`rounded-lg border-2 p-2.5 text-sm font-medium transition-colors text-center ${
+                    dcType === "manufacturer"
+                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      : "border-slate-200 hover:border-blue-300 text-slate-600"
+                  }`}
+                >
+                  Manufacturer DC
+                </button>
+              </div>
+            </div>
+
+            {/* Recipient */}
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Recipient</Label>
+              {dcType === "client" ? (
+                <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-2.5 border text-sm text-slate-700">
+                  <span className="font-medium">{order.client.name}</span>
+                  <Badge variant="secondary" className="text-xs">Client</Badge>
+                </div>
+              ) : (
+                <select
+                  value={vendorId}
+                  onChange={(e) => setVendorId(e.target.value)}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none"
+                >
+                  <option value="">
+                    {loadingVendors ? "Loading vendors..." : "Select a vendor"}
+                  </option>
+                  {vendors.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}{v.zohoContactId ? "" : " (no Zoho ID)"}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Reference Number (optional)</Label>
               <Input
                 value={dcForm.referenceNumber}
                 onChange={(e) => setDcForm((f) => ({ ...f, referenceNumber: e.target.value }))}
-                placeholder="Client-provided DC / PO ref"
+                placeholder={dcType === "client" ? "Client-provided DC / PO ref" : "Internal reference"}
                 className="h-8 text-sm"
               />
             </div>
-            <div className="text-xs text-muted-foreground bg-slate-50 rounded p-2 border space-y-1">
-              <p className="font-medium text-slate-700">Parts to include:</p>
-              {order.parts.map((p) => (
-                <p key={p.publicId} className="font-mono">{p.publicId} — {p.partName ?? "—"} × {p.quantity}</p>
-              ))}
+
+            {/* Part selection */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold">Parts to include</Label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={selectAllParts}
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={deselectAllParts}
+                    className="text-xs text-slate-500 hover:text-slate-700"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+              <div className="bg-slate-50 rounded-lg border max-h-48 overflow-y-auto">
+                {order.parts.map((p) => {
+                  const isSelected = selectedPartIds.has(p.publicId);
+                  return (
+                    <label
+                      key={p.publicId}
+                      className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-slate-100 transition-colors border-b last:border-b-0 ${
+                        isSelected ? "bg-blue-50/50" : ""
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => togglePartSelection(p.publicId)}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                      />
+                      <span className="flex-1 text-xs font-mono">
+                        {getPartDisplayName(p)}
+                      </span>
+                      <span className="text-xs text-muted-foreground">x{p.quantity}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {selectedPartIds.size} of {order.parts.length} parts selected
+              </p>
             </div>
+
             {!order.zohoSalesOrderId && (
               <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
                 <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />

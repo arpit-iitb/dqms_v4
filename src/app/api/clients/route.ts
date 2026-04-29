@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generatePublicId } from "@/lib/id-generator";
+import { isConfigured, zohoPost } from "@/lib/zoho";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest) {
         }
       : {},
     orderBy: { name: "asc" },
-    include: { _count: { select: { orders: true } } },
+    include: { _count: { select: { leads: true, salesOrders: true } } },
   });
 
   return NextResponse.json({ clients });
@@ -24,10 +25,27 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { name, email, contactPerson, contactPhone, address, gstin } = body;
+  const { name, email, contactPerson, contactPhone, address, gstin, createInZoho } = body;
 
   if (!name || !email) {
     return NextResponse.json({ error: "Name and email are required" }, { status: 400 });
+  }
+
+  let zohoContactId: string | null = null;
+
+  if (createInZoho && isConfigured()) {
+    try {
+      const zohoData = await zohoPost<{ contact: { contact_id: string } }>("/contacts", {
+        contact_name: name,
+        email,
+        company_name: name,
+        contact_type: "customer",
+      });
+      zohoContactId = zohoData.contact.contact_id;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Zoho API error";
+      return NextResponse.json({ error: `Failed to create Zoho contact: ${message}` }, { status: 502 });
+    }
   }
 
   const count = await prisma.client.count();
@@ -40,6 +58,7 @@ export async function POST(req: NextRequest) {
       contactPhone: contactPhone || null,
       address: address || null,
       gstin: gstin || null,
+      ...(zohoContactId ? { zohoContactId } : {}),
     },
   });
 

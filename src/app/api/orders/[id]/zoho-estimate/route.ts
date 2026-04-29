@@ -11,7 +11,7 @@ export async function GET(
   const { id } = await params;
 
   const parts = await prisma.part.findMany({
-    where: { orderId: id, active: true },
+    where: { salesOrderId: id, active: true },
     include: {
       pricingModel: true,
       files: {
@@ -33,6 +33,7 @@ export async function GET(
       clientUnitPriceUsd: p.pricingModel?.clientUnitPriceUsd ?? null,
       totalPriceUsd: p.pricingModel?.totalPriceUsd ?? null,
       drawingId: (p.files[0] as any)?.clientDrawingId ?? null,
+      hsnCode: p.pricingModel?.hsnCode ?? null,
     }))
   );
 }
@@ -50,7 +51,8 @@ export async function POST(
     return NextResponse.json({ error: "Zoho Books is not configured" }, { status: 503 });
   }
 
-  const { customerId, partIds, referenceNumber } = await req.json();
+  const { customerId, partIds, referenceNumber, taxId, hsnCodes } = await req.json();
+  // hsnCodes: Record<string, string> — partId -> HSN code
 
   if (!customerId) {
     return NextResponse.json({ error: "customerId is required" }, { status: 400 });
@@ -59,14 +61,14 @@ export async function POST(
     return NextResponse.json({ error: "partIds must be a non-empty array" }, { status: 400 });
   }
 
-  const order = await prisma.order.findUnique({
+  const order = await prisma.salesOrder.findUnique({
     where: { id },
     select: { id: true, displayId: true },
   });
   if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
   const parts = await prisma.part.findMany({
-    where: { id: { in: partIds }, orderId: id, active: true },
+    where: { id: { in: partIds }, salesOrderId: id, active: true },
     include: {
       pricingModel: true,
       files: {
@@ -77,17 +79,23 @@ export async function POST(
     },
   });
 
+  const hsnMap: Record<string, string> = hsnCodes && typeof hsnCodes === "object" ? hsnCodes : {};
+
   const lineItems = parts
     .filter((p) => p.pricingModel?.locked)
     .map((p) => {
       const pm = p.pricingModel!;
       const drawingId = (p.files[0] as any)?.clientDrawingId ?? null;
-      return {
+      const item: Record<string, unknown> = {
         name: drawingId || p.publicId,
         description: p.partName ? `${p.publicId} — ${p.partName}` : `Part ${p.publicId}`,
         quantity: pm.quantity,
         rate: Number(pm.clientUnitPriceUsd),
       };
+      const hsn = hsnMap[p.id] || pm.hsnCode;
+      if (hsn) item.hsn_or_sac = hsn;
+      if (taxId) item.tax_id = taxId;
+      return item;
     });
 
   if (lineItems.length === 0) {
@@ -112,10 +120,10 @@ export async function POST(
     return NextResponse.json({ error: err.message || "Zoho API error" }, { status: 502 });
   }
 
-  // Save estimate ID back to order
-  await prisma.order.update({
+  // Save estimate ID back to sales order as zohoSalesOrderId
+  await prisma.salesOrder.update({
     where: { id },
-    data: { zohoQuotationId: estimate.estimate_id },
+    data: { zohoSalesOrderId: estimate.estimate_id },
   });
 
   return NextResponse.json({

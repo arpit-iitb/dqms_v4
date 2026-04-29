@@ -14,6 +14,55 @@ export async function PATCH(
 
   // Fetch old block to detect status transition
   const oldBlock = await prisma.planBlock.findUnique({ where: { id: blockId } });
+  if (!oldBlock) {
+    return NextResponse.json({ error: "Block not found" }, { status: 404 });
+  }
+
+  // --- Sequential block ordering enforcement ---
+  if (status && status !== "FAILED") {
+    // When moving to IN_PROGRESS or DONE, all prior blocks must be DONE
+    if (status === "IN_PROGRESS" || status === "DONE") {
+      const incompletePrereqs = await prisma.planBlock.findMany({
+        where: {
+          planId,
+          blockOrder: { lt: oldBlock.blockOrder },
+          status: { not: "DONE" },
+        },
+        orderBy: { blockOrder: "asc" },
+      });
+      if (incompletePrereqs.length > 0) {
+        const names = incompletePrereqs.map(
+          (b) => `Step ${b.blockOrder}: ${b.processName || b.type}`
+        );
+        return NextResponse.json(
+          { error: `Cannot proceed — complete preceding steps first: ${names.join(", ")}` },
+          { status: 400 },
+        );
+      }
+    }
+
+    // Prevent regression from DONE if subsequent blocks are already active
+    if (oldBlock.status === "DONE" && status !== "DONE") {
+      const activeSuccessors = await prisma.planBlock.findMany({
+        where: {
+          planId,
+          blockOrder: { gt: oldBlock.blockOrder },
+          status: { in: ["IN_PROGRESS", "DONE"] },
+        },
+        orderBy: { blockOrder: "asc" },
+      });
+      if (activeSuccessors.length > 0) {
+        const names = activeSuccessors.map(
+          (b) => `Step ${b.blockOrder}: ${b.processName || b.type}`
+        );
+        return NextResponse.json(
+          { error: `Cannot undo — subsequent steps are already active: ${names.join(", ")}` },
+          { status: 400 },
+        );
+      }
+    }
+  }
+  // --- End sequential block ordering enforcement ---
 
   const block = await prisma.planBlock.update({
     where: { id: blockId },
@@ -59,12 +108,12 @@ export async function PATCH(
         if (tpl) {
           const plan = await prisma.manufacturingPlan.findUnique({
             where: { id: planId },
-            include: { part: { include: { order: { include: { client: true } } } } },
+            include: { part: { include: { lead: { include: { client: true } }, salesOrder: { include: { client: true } } } } },
           });
           const vars: Record<string, string> = {
             stepName: block.processName ?? block.type,
-            orderDisplayId: plan?.part.order.displayId ?? "",
-            clientName: plan?.part.order.client.name ?? "",
+            orderDisplayId: plan?.part.salesOrder?.displayId ?? plan?.part.lead?.displayId ?? "",
+            clientName: plan?.part.salesOrder?.client.name ?? plan?.part.lead?.client.name ?? "",
             partPublicId: plan?.part.publicId ?? "",
           };
           subject = renderTemplate(tpl.subject, vars);
@@ -77,7 +126,7 @@ export async function PATCH(
       // Log it
       const plan = await prisma.manufacturingPlan.findUnique({ where: { id: planId } });
       if (plan) {
-        const part = await prisma.part.findUnique({ where: { id: plan.partId }, select: { orderId: true } });
+        const part = await prisma.part.findUnique({ where: { id: plan.partId }, select: { leadId: true, salesOrderId: true } });
         if (part) {
           await prisma.blockEmailLog.create({
             data: {

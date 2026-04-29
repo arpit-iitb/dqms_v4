@@ -23,7 +23,7 @@ export async function GET(
               materialGrade: true,
               surfaceTreatment: true,
               quantity: true,
-              order: { select: { displayId: true, client: { select: { name: true } } } },
+              lead: { select: { displayId: true, client: { select: { name: true } } } },
             },
           },
         },

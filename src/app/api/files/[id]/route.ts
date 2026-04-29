@@ -24,6 +24,35 @@ export async function DELETE(
     );
   }
 
+  // If deleting the latest version, promote the previous version
+  if (file.isLatest) {
+    const olderVersion = await prisma.file.findFirst({
+      where: {
+        partId: file.partId,
+        fileType: file.fileType,
+        id: { not: file.id },
+        version: { lt: file.version },
+      },
+      orderBy: { version: "desc" },
+    });
+
+    if (olderVersion) {
+      await prisma.$transaction([
+        prisma.file.delete({ where: { id } }),
+        prisma.file.update({
+          where: { id: olderVersion.id },
+          data: { isLatest: true },
+        }),
+        prisma.part.update({
+          where: { id: file.partId },
+          data: { revision: { decrement: 1 } },
+        }),
+      ]);
+
+      return NextResponse.json({ ok: true });
+    }
+  }
+
   await prisma.file.delete({ where: { id } });
 
   // If part was FILES_RECEIVED and now missing a file, revert to DRAFT

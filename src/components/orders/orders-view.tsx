@@ -12,7 +12,7 @@ import {
   Plus, Search, Calendar, AlertTriangle, ClipboardList,
 } from "lucide-react";
 import {
-  ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, ALL_STATUSES, isOverdue, isDueWithinDays,
+  SO_STATUS_LABELS, SO_STATUS_COLORS, ALL_SO_STATUSES, isOverdue, isDueWithinDays,
 } from "@/lib/order-utils";
 import { formatDistanceToNow } from "date-fns";
 
@@ -25,6 +25,7 @@ interface Order {
   clientPoNumber: string | null;
   updatedAt: string;
   client: { id: string; name: string; email: string };
+  lead?: { id: string; displayId: string } | null;
   _count: { parts: number };
 }
 
@@ -69,8 +70,8 @@ export function OrdersView() {
         >
           <option value="">All statuses</option>
           <option value="overdue">Overdue</option>
-          {ALL_STATUSES.map((s) => (
-            <option key={s} value={s}>{ORDER_STATUS_LABELS[s]}</option>
+          {ALL_SO_STATUSES.map((s) => (
+            <option key={s} value={s}>{SO_STATUS_LABELS[s]}</option>
           ))}
         </select>
         <Link href="/orders/new">
@@ -115,6 +116,7 @@ export function OrdersView() {
                         <p className="text-xs text-muted-foreground mt-0.5 truncate">{order.client.name}</p>
                         <p className="text-xs text-slate-400">
                           {order._count.parts} part{order._count.parts !== 1 ? "s" : ""} · updated {formatDistanceToNow(new Date(order.updatedAt), { addSuffix: true })}
+                          {order.lead && <> · from <span className="font-mono text-slate-500">{order.lead.displayId}</span></>}
                         </p>
                       </div>
                     </div>
@@ -125,8 +127,8 @@ export function OrdersView() {
                           {new Date(order.deliveryDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
                         </span>
                       )}
-                      <Badge className={`text-xs ${ORDER_STATUS_COLORS[order.status] ?? ""}`}>
-                        {ORDER_STATUS_LABELS[order.status] ?? order.status}
+                      <Badge className={`text-xs ${SO_STATUS_COLORS[order.status] ?? ""}`}>
+                        {SO_STATUS_LABELS[order.status] ?? order.status}
                       </Badge>
                     </div>
                   </CardContent>

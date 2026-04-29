@@ -9,7 +9,8 @@ export async function GET(
   const part = await prisma.part.findUnique({
     where: { id },
     include: {
-      order: { select: { id: true, displayId: true } },
+      lead: { select: { id: true, displayId: true } },
+      salesOrder: { select: { id: true, displayId: true } },
       files: true,
       annotations: true,
       dimensions: { orderBy: { dimOrder: "asc" } },

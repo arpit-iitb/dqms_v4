@@ -1,21 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { saveFile } from "@/lib/storage";
+import { revisionId } from "@/lib/id-generator";
 import path from "path";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/parts/[id]/files — list files for a part
+// ?history=true returns all versions (not just latest), ordered by fileType asc, version desc
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const showHistory = req.nextUrl.searchParams.get("history") === "true";
 
   const files = await prisma.file.findMany({
-    where: { partId: id, isLatest: true },
+    where: { partId: id, ...(showHistory ? {} : { isLatest: true }) },
     include: { derivatives: true },
-    orderBy: { createdAt: "asc" },
+    orderBy: showHistory
+      ? [{ fileType: "asc" }, { version: "desc" }]
+      : { createdAt: "asc" },
   });
 
   return NextResponse.json({
@@ -25,6 +30,8 @@ export async function GET(
       fileName: f.fileName,
       version: f.version,
       isOriginal: f.isOriginal,
+      isLatest: f.isLatest,
+      internalDrawingId: f.internalDrawingId,
       createdAt: f.createdAt,
       aiSanitizedAt: f.aiSanitizedAt,
       derivatives: f.derivatives.map((d) => ({
@@ -49,6 +56,7 @@ export async function POST(
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
   const fileTypeRaw = formData.get("type") as string | null;
+  const isRevision = formData.get("isRevision") === "true";
 
   if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
   if (!fileTypeRaw || !["STEP", "DRAWING_PDF"].includes(fileTypeRaw)) {
@@ -58,13 +66,65 @@ export async function POST(
   const fileType = fileTypeRaw as "STEP" | "DRAWING_PDF";
   const ext = path.extname(file.name).toLowerCase() || (fileType === "DRAWING_PDF" ? ".pdf" : ".step");
 
-  // Check for duplicate
+  // Check for existing latest file of same type
   const existing = part.files.find((f) => f.fileType === fileType && f.isLatest);
-  if (existing) {
+
+  if (existing && !isRevision) {
     return NextResponse.json({ error: `${fileType} already uploaded. Delete existing file first.` }, { status: 409 });
   }
 
-  // Create DB record first to get UUID
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  if (isRevision && existing) {
+    // Revision upload — wrap in transaction
+    const newVersion = existing.version + 1;
+    const newRevision = part.revision + 1;
+    const newRevisionId = revisionId(part.publicId, newRevision);
+
+    const result = await prisma.$transaction(async (tx) => {
+      // Mark old file as not latest
+      await tx.file.update({
+        where: { id: existing.id },
+        data: { isLatest: false },
+      });
+
+      // Increment part revision
+      await tx.part.update({
+        where: { id },
+        data: { revision: newRevision },
+      });
+
+      // Create new file record
+      const fileRecord = await tx.file.create({
+        data: {
+          partId: id,
+          fileType,
+          fileName: file.name,
+          filePath: "",
+          version: newVersion,
+          isOriginal: true,
+          isLatest: true,
+          internalDrawingId: newRevisionId,
+        },
+      });
+
+      return fileRecord;
+    });
+
+    const storedName = `${result.id}${ext}`;
+    const relativePath = await saveFile(buffer, storedName, "originals");
+
+    await prisma.file.update({
+      where: { id: result.id },
+      data: { fileName: storedName, filePath: relativePath },
+    });
+
+    return NextResponse.json({
+      file: { id: result.id, fileType, fileName: storedName, version: newVersion, internalDrawingId: newRevisionId },
+    }, { status: 201 });
+  }
+
+  // Standard upload (no revision)
   const fileRecord = await prisma.file.create({
     data: {
       partId: id,
@@ -78,7 +138,6 @@ export async function POST(
   });
 
   const storedName = `${fileRecord.id}${ext}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
   const relativePath = await saveFile(buffer, storedName, "originals");
 
   await prisma.file.update({

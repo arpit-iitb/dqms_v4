@@ -1,5 +1,5 @@
 // dqms_v4 — Unified Manufacturing & Quotation Platform
-// Merged schema from dqms_v3 (Express) + muop (Next.js)
+// Schema v2: Separate Lead + SalesOrder models
 
 generator client {
   provider        = "prisma-client-js"
@@ -44,9 +44,11 @@ model Client {
   contactPhone  String?  @map("contact_phone")
   address       String?
   gstin         String?
+  zohoContactId String?  @unique @map("zoho_contact_id")
   createdAt     DateTime @default(now()) @map("created_at")
 
-  orders Order[]
+  leads       Lead[]
+  salesOrders SalesOrder[]
 
   @@map("clients")
 }
@@ -61,6 +63,7 @@ model Vendor {
   contactPhone   String?  @map("contact_phone")
   specialization String?
   gstin          String?
+  zohoContactId  String?  @unique @map("zoho_contact_id")
   isActive       Boolean  @default(true) @map("is_active")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
@@ -81,6 +84,15 @@ model DrawingCounter {
   @@map("drawing_counters")
 }
 
+model LeadCounter {
+  prefix       String   @id
+  lastSequence Int      @default(0) @map("last_sequence")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("lead_counters")
+}
+
 model OrderCounter {
   prefix       String   @id
   lastSequence Int      @default(0) @map("last_sequence")
@@ -91,56 +103,89 @@ model OrderCounter {
 }
 
 // ============================================================
-// ORDER
+// LEAD (Pre-Sales Lifecycle)
 // ============================================================
 
-model Order {
-  id                  String      @id @default(uuid())
-  publicId            String      @unique @map("public_id")
-  displayId           String      @unique @map("display_id")
-  internalQuoteNumber String?     @unique @map("internal_quote_number")
-  clientId            String      @map("client_id")
-  status              OrderStatus @default(LEAD)
-  orderDate           DateTime?   @map("order_date")
-  deliveryDate        DateTime?   @map("delivery_date")
-  deliveryDatePO      DateTime?   @map("delivery_date_po")
-  zohoQuotationId     String?     @map("zoho_quotation_id")
-  zohoSalesOrderId    String?     @map("zoho_sales_order_id")
-  clientPoNumber      String?     @map("client_po_number")
-  clientDcNumber      String?     @map("client_dc_number")
-  mechximizeDcNumber  String?     @map("mechximize_dc_number")
-  updateSchedule      String[]    @default([]) @map("update_schedule")
-  updatesDone         Boolean[]   @default([]) @map("updates_done")
-  dispatchModule      Json?       @map("dispatch_module")
+model Lead {
+  id                  String     @id @default(uuid())
+  publicId            String     @unique @map("public_id")
+  displayId           String     @unique @map("display_id")
+  internalQuoteNumber String?    @unique @map("internal_quote_number")
+  clientId            String     @map("client_id")
+  status              LeadStatus @default(LEAD)
+  orderDate           DateTime?  @map("order_date")
+  deliveryDate        DateTime?  @map("delivery_date")
+  zohoQuotationId     String?    @map("zoho_quotation_id")
   notes               String?
-  createdAt           DateTime    @default(now()) @map("created_at")
-  updatedAt           DateTime    @updatedAt @map("updated_at")
+  salesOrderId        String?    @unique @map("sales_order_id")
+  createdAt           DateTime   @default(now()) @map("created_at")
+  updatedAt           DateTime   @updatedAt @map("updated_at")
 
   client      Client          @relation(fields: [clientId], references: [id])
-  parts       Part[]
-  emailLogs   OrderEmailLog[]
+  salesOrder  SalesOrder?     @relation(fields: [salesOrderId], references: [id])
+  parts       Part[]          @relation("LeadParts")
+  emailLogs   EmailLog[]
   documents   Document[]
   groupedRfqs GroupedRFQ[]
 
   @@index([clientId])
   @@index([status])
-  @@index([deliveryDate])
-  @@map("orders")
+  @@map("leads")
 }
 
-enum OrderStatus {
+enum LeadStatus {
   LEAD
   QUOTATION_IN_PROGRESS
   RFQ_SENT
   QUOTED
   CLIENT_PROPOSAL_SENT
+  WON
+  LOST
+}
+
+// ============================================================
+// SALES ORDER (Production Lifecycle)
+// ============================================================
+
+model SalesOrder {
+  id                 String           @id @default(uuid())
+  publicId           String           @unique @map("public_id")
+  displayId          String           @unique @map("display_id")
+  clientId           String           @map("client_id")
+  status             SalesOrderStatus @default(ORDER_CONFIRMED)
+  orderDate          DateTime?        @map("order_date")
+  deliveryDate       DateTime?        @map("delivery_date")
+  deliveryDatePO     DateTime?        @map("delivery_date_po")
+  zohoSalesOrderId   String?          @map("zoho_sales_order_id")
+  clientPoNumber     String?          @map("client_po_number")
+  clientDcNumber     String?          @map("client_dc_number")
+  mechximizeDcNumber String?          @map("mechximize_dc_number")
+  updateSchedule     String[]         @default([]) @map("update_schedule")
+  updatesDone        Boolean[]        @default([]) @map("updates_done")
+  dispatchModule     Json?            @map("dispatch_module")
+  notes              String?
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  client    Client       @relation(fields: [clientId], references: [id])
+  lead      Lead?
+  parts     Part[]       @relation("SalesOrderParts")
+  emailLogs EmailLog[]
+  documents Document[]
+
+  @@index([clientId])
+  @@index([status])
+  @@index([deliveryDate])
+  @@map("sales_orders")
+}
+
+enum SalesOrderStatus {
   ORDER_CONFIRMED
   IN_PRODUCTION
   INSPECTION
   READY_FOR_DISPATCH
   DISPATCHED
   COMPLETED
-  LOST
   CANCELLED
 }
 
@@ -151,7 +196,8 @@ enum OrderStatus {
 model Part {
   id               String    @id @default(uuid())
   publicId         String    @unique @map("public_id")
-  orderId          String    @map("order_id")
+  leadId           String?   @map("lead_id")
+  salesOrderId     String?   @map("sales_order_id")
   revision         Int       @default(1)
   state            PartState @default(DRAFT)
   active           Boolean   @default(true)
@@ -165,7 +211,8 @@ model Part {
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  order             Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  lead              Lead?              @relation("LeadParts", fields: [leadId], references: [id], onDelete: Cascade)
+  salesOrder        SalesOrder?        @relation("SalesOrderParts", fields: [salesOrderId], references: [id], onDelete: SetNull)
   files             File[]
   vendorFiles       VendorFile[]
   annotations       Annotation[]
@@ -175,7 +222,8 @@ model Part {
   manufacturingPlan ManufacturingPlan?
   dimensions        Dimension[]
 
-  @@index([orderId])
+  @@index([leadId])
+  @@index([salesOrderId])
   @@index([state])
   @@map("parts")
 }
@@ -321,18 +369,18 @@ model RFQ {
 model GroupedRFQ {
   id        String    @id @default(uuid())
   publicId  String    @unique @map("public_id")
-  orderId   String    @map("order_id")
+  leadId    String    @map("lead_id")
   status    RFQStatus @default(SENT)
   dueDate   DateTime  @map("due_date")
   coverNote String?   @map("cover_note")
   locked    Boolean   @default(false)
   createdAt DateTime  @default(now()) @map("created_at")
 
-  order   Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  lead    Lead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
   vendors GroupedRFQVendor[]
   parts   GroupedRFQPart[]
 
-  @@index([orderId])
+  @@index([leadId])
   @@map("grouped_rfqs")
 }
 
@@ -424,6 +472,7 @@ model PricingModel {
   clientUnitPriceUsd     Float    @map("client_unit_price_usd")
   quantity               Int      @default(1)
   totalPriceUsd          Float    @map("total_price_usd")
+  hsnCode                String?  @map("hsn_code")
   locked                 Boolean  @default(false)
   createdAt              DateTime @default(now()) @map("created_at")
 
@@ -645,20 +694,23 @@ model BlockDimension {
 // EMAIL LOGS & DOCUMENTS
 // ============================================================
 
-model OrderEmailLog {
-  id             String   @id @default(uuid())
-  orderId        String   @map("order_id")
-  templateKey    String?  @map("template_key")
+model EmailLog {
+  id             String      @id @default(uuid())
+  leadId         String?     @map("lead_id")
+  salesOrderId   String?     @map("sales_order_id")
+  templateKey    String?     @map("template_key")
   subject        String
   body           String?
-  recipientEmail String   @map("recipient_email")
-  recipientName  String?  @map("recipient_name")
-  sentAt         DateTime @default(now()) @map("sent_at")
+  recipientEmail String      @map("recipient_email")
+  recipientName  String?     @map("recipient_name")
+  sentAt         DateTime    @default(now()) @map("sent_at")
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  lead       Lead?       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  salesOrder SalesOrder? @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
 
-  @@index([orderId])
-  @@map("order_email_logs")
+  @@index([leadId])
+  @@index([salesOrderId])
+  @@map("email_logs")
 }
 
 model BlockEmailLog {
@@ -678,7 +730,8 @@ model BlockEmailLog {
 
 model Document {
   id             String       @id @default(uuid())
-  orderId        String       @map("order_id")
+  leadId         String?      @map("lead_id")
+  salesOrderId   String?      @map("sales_order_id")
   documentType   DocumentType @map("document_type")
   documentNumber String?      @map("document_number")
   filePath       String?      @map("file_path")
@@ -687,9 +740,11 @@ model Document {
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  lead       Lead?       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  salesOrder SalesOrder? @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
 
-  @@index([orderId])
+  @@index([leadId])
+  @@index([salesOrderId])
   @@map("documents")
 }
 
@@ -721,4 +776,3 @@ model EmailTemplate {
 
   @@map("email_templates")
 }
-

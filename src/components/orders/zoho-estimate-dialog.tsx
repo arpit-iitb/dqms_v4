@@ -17,6 +17,14 @@ interface PartOption {
   clientUnitPriceUsd: number | null;
   totalPriceUsd: number | null;
   drawingId: string | null;
+  hsnCode: string | null;
+}
+
+interface ZohoTax {
+  taxId: string;
+  taxName: string;
+  taxPercentage: number;
+  taxType: string;
 }
 
 interface Customer {
@@ -41,6 +49,10 @@ export function ZohoEstimateDialog({ open, onOpenChange, orderId, orderDisplayId
   const [selectedCustomerName, setSelectedCustomerName] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
+  const [taxes, setTaxes] = useState<ZohoTax[]>([]);
+  const [selectedTaxId, setSelectedTaxId] = useState("");
+  const [loadingTaxes, setLoadingTaxes] = useState(false);
+  const [hsnCodes, setHsnCodes] = useState<Record<string, string>>({});
   const [loadingParts, setLoadingParts] = useState(false);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -57,6 +69,8 @@ export function ZohoEstimateDialog({ open, onOpenChange, orderId, orderDisplayId
     setSelectedCustomerId("");
     setSelectedCustomerName("");
     setCustomerSearch("");
+    setSelectedTaxId("");
+    setHsnCodes({});
 
     setLoadingParts(true);
     fetch(`/api/orders/${orderId}/zoho-estimate`)
@@ -65,8 +79,21 @@ export function ZohoEstimateDialog({ open, onOpenChange, orderId, orderDisplayId
         setParts(data);
         // Auto-select all locked parts
         setSelectedPartIds(new Set(data.filter((p) => p.pricingLocked).map((p) => p.id)));
+        // Initialize HSN codes from part data
+        const initial: Record<string, string> = {};
+        for (const p of data) {
+          if (p.hsnCode) initial[p.id] = p.hsnCode;
+        }
+        setHsnCodes(initial);
       })
       .finally(() => setLoadingParts(false));
+
+    setLoadingTaxes(true);
+    fetch("/api/zoho/taxes")
+      .then((r) => r.json())
+      .then((data) => setTaxes(Array.isArray(data.taxes) ? data.taxes : []))
+      .catch(() => setTaxes([]))
+      .finally(() => setLoadingTaxes(false));
 
     setLoadingCustomers(true);
     fetch("/api/zoho/customers")
@@ -127,6 +154,8 @@ export function ZohoEstimateDialog({ open, onOpenChange, orderId, orderDisplayId
         body: JSON.stringify({
           customerId: selectedCustomerId,
           partIds: [...selectedPartIds],
+          taxId: selectedTaxId || undefined,
+          hsnCodes: Object.keys(hsnCodes).length > 0 ? hsnCodes : undefined,
         }),
       });
       const data = await res.json();
@@ -169,6 +198,23 @@ export function ZohoEstimateDialog({ open, onOpenChange, orderId, orderDisplayId
           </div>
         ) : (
           <div className="space-y-5 py-2">
+            {/* GST Tax Rate */}
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-slate-700">GST Tax Rate</p>
+              <select
+                value={selectedTaxId}
+                onChange={(e) => setSelectedTaxId(e.target.value)}
+                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">{loadingTaxes ? "Loading taxes..." : "No tax"}</option>
+                {taxes.map((t) => (
+                  <option key={t.taxId} value={t.taxId}>
+                    {t.taxName} ({t.taxPercentage}%)
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Customer picker */}
             <div className="space-y-1.5">
               <p className="text-xs font-semibold text-slate-700">Customer</p>
@@ -267,7 +313,21 @@ export function ZohoEstimateDialog({ open, onOpenChange, orderId, orderDisplayId
                               <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-1">No locked pricing</span>
                             )}
                           </div>
-                          <p className="text-xs text-muted-foreground">Qty: {p.quantity}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <p className="text-xs text-muted-foreground">Qty: {p.quantity}</p>
+                            {p.pricingLocked && (
+                              <Input
+                                placeholder="HSN/SAC"
+                                value={hsnCodes[p.id] ?? ""}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setHsnCodes((prev) => ({ ...prev, [p.id]: val }));
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="h-6 text-xs w-24 px-1.5"
+                              />
+                            )}
+                          </div>
                         </div>
                         {p.pricingLocked && p.clientUnitPriceUsd != null && (
                           <div className="text-right flex-shrink-0">

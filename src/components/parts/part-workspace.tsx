@@ -44,7 +44,8 @@ const ALL_STATES = Object.keys(PART_STATE_LABELS);
 interface Part {
   id: string;
   publicId: string;
-  orderId: string;
+  leadId: string | null;
+  salesOrderId: string | null;
   state: string;
   revision: number;
   partName: string | null;
@@ -53,7 +54,8 @@ interface Part {
   materialGrade: string | null;
   surfaceTreatment: string | null;
   quantity: number;
-  order?: { displayId: string };
+  lead?: { id: string; displayId: string };
+  salesOrder?: { id: string; displayId: string };
   files?: any[];
   dimensions?: any[];
   annotations?: any[];
@@ -134,13 +136,25 @@ export function PartWorkspace({ partId }: { partId: string }) {
     <div className="p-6 space-y-4 max-w-5xl">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
-        <Link href="/orders" className="hover:text-slate-800 flex items-center gap-1">
-          <ArrowLeft className="h-4 w-4" /> Orders
-        </Link>
-        {part.order && (
+        {part.salesOrder ? (
+          <Link href="/orders" className="hover:text-slate-800 flex items-center gap-1">
+            <ArrowLeft className="h-4 w-4" /> Orders
+          </Link>
+        ) : (
+          <Link href="/quotations" className="hover:text-slate-800 flex items-center gap-1">
+            <ArrowLeft className="h-4 w-4" /> Leads
+          </Link>
+        )}
+        {part.salesOrder && (
           <>
             <span>/</span>
-            <Link href={`/orders/${part.orderId}`} className="hover:text-slate-800 font-mono">{part.order.displayId}</Link>
+            <Link href={`/orders/${part.salesOrder.id}`} className="hover:text-slate-800 font-mono">{part.salesOrder.displayId}</Link>
+          </>
+        )}
+        {!part.salesOrder && part.lead && (
+          <>
+            <span>/</span>
+            <Link href={`/leads/${part.lead.id}`} className="hover:text-slate-800 font-mono">{part.lead.displayId}</Link>
           </>
         )}
         <span>/</span>
