@@ -12,7 +12,13 @@ export async function GET(
     include: {
       client: true,
       lead: { select: { id: true, displayId: true } },
-      parts: { orderBy: { createdAt: "asc" } },
+      parts: {
+        orderBy: { createdAt: "asc" },
+        include: {
+          pricingModel: { select: { locked: true, clientUnitPriceUsd: true, totalPriceUsd: true, hsnCode: true } },
+          files: { where: { isLatest: true }, select: { id: true, fileType: true, fileName: true } },
+        },
+      },
       emailLogs: { orderBy: { sentAt: "desc" }, take: 20 },
       documents: { orderBy: { createdAt: "desc" } },
     },

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getAbsolutePath, fileExists } from "@/lib/storage";
-import fs from "fs";
+import { getFileBuffer } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -21,14 +20,12 @@ export async function GET(
     return NextResponse.json({ error: "Masked file not ready" }, { status: 404 });
   }
 
-  if (!fileExists(derivative.filePath)) {
-    return NextResponse.json({ error: "File not on disk" }, { status: 404 });
+  const buffer = await getFileBuffer(derivative.filePath);
+  if (!buffer) {
+    return NextResponse.json({ error: "File not found" }, { status: 404 });
   }
 
-  const absolutePath = getAbsolutePath(derivative.filePath);
-  const buffer = fs.readFileSync(absolutePath);
-
-  return new NextResponse(buffer, {
+  return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `inline; filename="masked_${derivative.file.fileName}"`,

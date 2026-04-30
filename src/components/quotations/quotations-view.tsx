@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Plus, Search, Calendar, AlertTriangle, TrendingUp,
   FileText, SendHorizonal, CheckCircle2, XCircle,
+  RefreshCw, Loader2,
 } from "lucide-react";
 import {
   LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, LEAD_PIPELINE_STATUSES,
@@ -94,6 +95,29 @@ export function QuotationsView() {
   const [createInZoho, setCreateInZoho] = useState(true);
   const [creatingClient, setCreatingClient] = useState(false);
   const [clientError, setClientError] = useState("");
+  const [syncingZoho, setSyncingZoho] = useState(false);
+
+  const handleSyncZoho = async () => {
+    setSyncingZoho(true);
+    setClientError("");
+    try {
+      const res = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "sync-zoho" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Sync failed");
+      // Re-fetch clients
+      const cRes = await fetch("/api/clients");
+      const cData = await cRes.json();
+      setClients(cData.clients ?? []);
+    } catch (err: any) {
+      setClientError(err.message);
+    } finally {
+      setSyncingZoho(false);
+    }
+  };
 
   const load = useCallback(() => {
     setLoading(true);
@@ -289,10 +313,22 @@ export function QuotationsView() {
                 >
                   <Plus className="h-4 w-4" />
                 </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 px-2 flex-shrink-0 text-xs gap-1"
+                  onClick={handleSyncZoho}
+                  disabled={syncingZoho}
+                  title="Import clients from Zoho"
+                >
+                  {syncingZoho ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  Zoho
+                </Button>
               </div>
               {clients.length === 0 && !showNewClient && (
                 <p className="text-xs text-muted-foreground">
-                  No clients yet. Click + to add one.
+                  No clients yet. Click + to add one, or sync from Zoho.
                 </p>
               )}
 

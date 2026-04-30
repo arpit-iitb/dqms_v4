@@ -761,6 +761,20 @@ enum DocumentType {
 }
 
 // ============================================================
+// FILE BLOB STORAGE (for Vercel deployment — no local filesystem)
+// ============================================================
+
+model FileBlob {
+  storageKey String   @id @map("storage_key")
+  data       Bytes    @map("data")
+  mimeType   String   @map("mime_type")
+  size       Int
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("file_blobs")
+}
+
+// ============================================================
 // EMAIL TEMPLATES
 // ============================================================
 

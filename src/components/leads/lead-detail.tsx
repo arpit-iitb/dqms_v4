@@ -189,6 +189,16 @@ export function LeadDetail({ leadId }: { leadId: string }) {
   // Convert to Sales Order dialog
   const [convertDialogOpen, setConvertDialogOpen] = useState(false);
   const [convertForm, setConvertForm] = useState({ deliveryDate: "", deliveryDatePO: "", clientPoNumber: "" });
+
+  // Pre-fill conversion form when lead data loads
+  useEffect(() => {
+    if (lead?.deliveryDate) {
+      setConvertForm((prev) => ({
+        ...prev,
+        deliveryDate: prev.deliveryDate || new Date(lead.deliveryDate!).toISOString().slice(0, 10),
+      }));
+    }
+  }, [lead?.deliveryDate]);
   const [converting, setConverting] = useState(false);
   const [convertError, setConvertError] = useState("");
 

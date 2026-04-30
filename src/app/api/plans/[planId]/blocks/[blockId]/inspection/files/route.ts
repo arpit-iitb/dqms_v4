@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { saveFile } from "@/lib/storage";
 import path from "path";
-import fs from "fs";
 
 export const dynamic = "force-dynamic";
 
@@ -104,17 +103,8 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Photo not found" }, { status: 404 });
   }
 
-  // Delete DB record
+  // Delete DB record (FileBlob cleanup handled separately or by DB cascade)
   await prisma.inspectionPhoto.delete({ where: { id: photoId } });
-
-  // Best-effort file cleanup
-  try {
-    const { getAbsolutePath } = await import("@/lib/storage");
-    const absPath = getAbsolutePath(photo.filePath);
-    if (fs.existsSync(absPath)) fs.unlinkSync(absPath);
-  } catch {
-    // Ignore file deletion errors
-  }
 
   return NextResponse.json({ ok: true });
 }

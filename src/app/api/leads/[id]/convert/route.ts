@@ -10,7 +10,7 @@ export async function POST(
 ) {
   const { id } = await params;
   const body = await req.json();
-  const { deliveryDate, deliveryDatePO, clientPoNumber } = body;
+  const { deliveryDate: bodyDeliveryDate, deliveryDatePO, clientPoNumber } = body;
 
   const lead = await prisma.lead.findUnique({
     where: { id },
@@ -33,8 +33,11 @@ export async function POST(
     );
   }
 
+  // Fall back to lead's delivery date if not provided
+  const deliveryDate = bodyDeliveryDate || (lead.deliveryDate ? lead.deliveryDate.toISOString() : null);
+
   const displayId = await generateSalesOrderDisplayId();
-  const orderDate = new Date();
+  const orderDate = lead.orderDate ?? new Date();
 
   const updateSchedule = deliveryDate
     ? buildUpdateSchedule(orderDate.toISOString(), deliveryDate)

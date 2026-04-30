@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getAbsolutePath, fileExists } from "@/lib/storage";
-import fs from "fs";
-import path from "path";
+import { getFileBuffer, getFileMime } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -16,18 +14,14 @@ export async function GET(
   const file = await prisma.file.findUnique({ where: { id } });
   if (!file) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  if (!fileExists(file.filePath)) {
-    return NextResponse.json({ error: "File not on disk" }, { status: 404 });
+  const buffer = await getFileBuffer(file.filePath);
+  if (!buffer) {
+    return NextResponse.json({ error: "File not found" }, { status: 404 });
   }
 
-  const absolutePath = getAbsolutePath(file.filePath);
-  const buffer = fs.readFileSync(absolutePath);
-  const ext = path.extname(file.fileName).toLowerCase();
-  const contentType = ext === ".pdf" ? "application/pdf"
-    : ext === ".step" || ext === ".stp" ? "application/octet-stream"
-    : "application/octet-stream";
+  const contentType = await getFileMime(file.filePath);
 
-  return new NextResponse(buffer, {
+  return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": contentType,
       "Content-Disposition": `inline; filename="${file.fileName}"`,

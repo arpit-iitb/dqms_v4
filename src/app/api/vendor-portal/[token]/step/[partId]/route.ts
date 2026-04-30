@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getAbsolutePath, fileExists } from "@/lib/storage";
-import fs from "fs";
+import { getFileBuffer } from "@/lib/storage";
 
 // GET /api/vendor-portal/[token]/step/[partId]
 // Public: validates vendor token, then serves the STEP file for that part.
@@ -39,13 +38,12 @@ export async function GET(
     return NextResponse.json({ error: "No STEP file available for this part" }, { status: 404 });
   }
 
-  const absPath = getAbsolutePath(stepFile.filePath);
-  if (!fileExists(stepFile.filePath)) {
-    return NextResponse.json({ error: "File not found on disk" }, { status: 404 });
+  const buffer = await getFileBuffer(stepFile.filePath);
+  if (!buffer) {
+    return NextResponse.json({ error: "File not found" }, { status: 404 });
   }
 
-  const buffer = fs.readFileSync(absPath);
-  return new NextResponse(buffer, {
+  return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/octet-stream",
       "Content-Disposition": `attachment; filename="step-${partId}.step"`,

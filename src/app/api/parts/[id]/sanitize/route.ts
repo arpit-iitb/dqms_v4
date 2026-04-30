@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getAbsolutePath, saveFile } from "@/lib/storage";
+import { getFileBuffer, saveFile } from "@/lib/storage";
 import {
   analyzeForSanitization,
   applySanitization,
   type RedactionBlock,
 } from "@/lib/sanitizer";
-import fs from "fs/promises";
 
 export const dynamic = "force-dynamic";
 
@@ -52,14 +51,10 @@ export async function POST(
     );
   }
 
-  const inputPath = getAbsolutePath(file.filePath);
-  let pdfBuffer: Buffer;
-
-  try {
-    pdfBuffer = await fs.readFile(inputPath);
-  } catch {
+  const pdfBuffer = await getFileBuffer(file.filePath);
+  if (!pdfBuffer) {
     return NextResponse.json(
-      { error: "PDF file not found on disk" },
+      { error: "PDF file not found" },
       { status: 404 }
     );
   }
