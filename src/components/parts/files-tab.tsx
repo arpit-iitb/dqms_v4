@@ -1,13 +1,27 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   FileText, Layers, Upload, Trash2, Eye, Sparkles, CheckCircle2,
   AlertCircle, Loader2, ChevronDown, ChevronUp, History, RefreshCw,
+  Box,
 } from "lucide-react";
+
+const StepViewer = dynamic(() => import("./step-viewer"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-[400px] bg-slate-50 rounded-lg border">
+      <div className="flex flex-col items-center gap-2 text-slate-400">
+        <Loader2 className="h-6 w-6 animate-spin" />
+        <span className="text-xs">Loading 3D viewer...</span>
+      </div>
+    </div>
+  ),
+});
 
 interface FileRecord {
   id: string;
@@ -100,7 +114,9 @@ function FileRow({
   const isSanitized = !!file.aiSanitizedAt && maskedDerivative?.status === "READY";
   const isThisSanitizing = sanitizing === file.id;
   const isPdf = file.fileType === "DRAWING_PDF";
+  const isStep = file.fileType === "STEP";
   const [expanded, setExpanded] = useState(false);
+  const [show3D, setShow3D] = useState(false);
   const revInputRef = useRef<HTMLInputElement>(null);
   const isRevUploading = revisionUploading === file.fileType;
 
@@ -168,7 +184,20 @@ function FileRow({
                 {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
               </Button>
             )}
-            {/* View original in new tab (non-PDF) */}
+            {/* 3D Viewer toggle for STEP files */}
+            {isStep && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`h-7 px-2 text-xs gap-1 ${show3D ? "text-blue-600 bg-blue-50" : ""}`}
+                onClick={() => setShow3D((v) => !v)}
+                title={show3D ? "Close 3D Viewer" : "View 3D"}
+              >
+                <Box className="h-3.5 w-3.5" />
+                {show3D ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              </Button>
+            )}
+            {/* Download link for non-PDF */}
             {!isPdf && (
               <a href={`/api/files/${file.id}/serve`} target="_blank" rel="noreferrer">
                 <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Download">
@@ -210,6 +239,13 @@ function FileRow({
         {/* Inline PDF viewer */}
         {isPdf && expanded && (
           <PdfViewer fileId={file.id} isSanitized={isSanitized} />
+        )}
+
+        {/* Inline 3D viewer for STEP files */}
+        {isStep && show3D && (
+          <div className="mt-3 border-t pt-3">
+            <StepViewer fileId={file.id} />
+          </div>
         )}
       </CardContent>
     </Card>
@@ -393,22 +429,69 @@ export function FilesTab({ partId, onUpdate }: Props) {
     onUpdate();
   };
 
+  // Sanitization state for preview flow
+  const [previewData, setPreviewData] = useState<{
+    fileId: string;
+    blocks: any[];
+    metadata: any;
+    pageCount: number;
+  } | null>(null);
+  const [applying, setApplying] = useState(false);
+
   const handleSanitize = async (fileId: string) => {
     setSanitizing(fileId);
     setSanitizeError("");
+    // Phase 1: Analyze
     const res = await fetch(`/api/parts/${partId}/sanitize`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fileId }),
+      body: JSON.stringify({ fileId, action: "analyze" }),
     });
     setSanitizing(null);
     if (!res.ok) {
       const d = await res.json();
+      setSanitizeError(d.error || "Sanitization analysis failed");
+    } else {
+      const data = await res.json();
+      setPreviewData({ fileId, ...data });
+    }
+  };
+
+  const handleApplySanitization = async () => {
+    if (!previewData) return;
+    setApplying(true);
+    setSanitizeError("");
+    const res = await fetch(`/api/parts/${partId}/sanitize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileId: previewData.fileId,
+        action: "apply",
+        redactions: previewData.blocks.filter((b: any) => b.action === "REMOVE"),
+        metadata: previewData.metadata,
+      }),
+    });
+    setApplying(false);
+    if (!res.ok) {
+      const d = await res.json();
       setSanitizeError(d.error || "Sanitization failed");
     } else {
+      setPreviewData(null);
       load();
       onUpdate();
     }
+  };
+
+  const toggleRedactionBlock = (blockId: string) => {
+    if (!previewData) return;
+    setPreviewData({
+      ...previewData,
+      blocks: previewData.blocks.map((b: any) =>
+        b.id === blockId
+          ? { ...b, action: b.action === "REMOVE" ? "KEEP" : "REMOVE" }
+          : b
+      ),
+    });
   };
 
   const hasPdf = files.some((f) => f.fileType === "DRAWING_PDF");
@@ -425,6 +508,73 @@ export function FilesTab({ partId, onUpdate }: Props) {
         <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded p-2">
           <AlertCircle className="h-4 w-4" /> {sanitizeError}
         </div>
+      )}
+
+      {/* Sanitization Preview */}
+      {previewData && (
+        <Card className="border-purple-200 bg-purple-50/30">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-semibold text-purple-800 flex items-center gap-2">
+                <Sparkles className="h-4 w-4" /> Sanitization Preview
+              </h4>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => setPreviewData(null)}
+                  disabled={applying}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="text-xs bg-purple-600 hover:bg-purple-700 text-white"
+                  onClick={handleApplySanitization}
+                  disabled={applying}
+                >
+                  {applying ? <><Loader2 className="h-3 w-3 animate-spin mr-1" /> Applying...</> : "Apply Redactions"}
+                </Button>
+              </div>
+            </div>
+
+            {previewData.metadata?.clientDrawingId && (
+              <div className="text-xs text-slate-600">
+                Detected: <span className="font-medium">{previewData.metadata.clientDrawingId}</span>
+                {previewData.metadata.clientCompanyName && <> by <span className="font-medium">{previewData.metadata.clientCompanyName}</span></>}
+              </div>
+            )}
+
+            <div className="text-xs text-slate-500 mb-1">
+              {previewData.blocks.filter((b: any) => b.action === "REMOVE").length} blocks to redact · {previewData.blocks.filter((b: any) => b.action === "KEEP").length} kept · Click to toggle
+            </div>
+
+            <div className="max-h-64 overflow-y-auto space-y-1 border rounded bg-white p-2">
+              {previewData.blocks.map((block: any) => (
+                <button
+                  key={block.id}
+                  onClick={() => toggleRedactionBlock(block.id)}
+                  className={`w-full text-left flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors ${
+                    block.action === "REMOVE"
+                      ? "bg-red-50 hover:bg-red-100 border border-red-200"
+                      : "bg-green-50 hover:bg-green-100 border border-green-200"
+                  }`}
+                >
+                  <span className={`flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                    block.action === "REMOVE" ? "bg-red-200 text-red-800" : "bg-green-200 text-green-800"
+                  }`}>
+                    {block.action === "REMOVE" ? "REMOVE" : "KEEP"}
+                  </span>
+                  <span className="flex-1 truncate font-mono text-slate-700">
+                    {block.isImage ? "[Image]" : block.text}
+                  </span>
+                  <span className="flex-shrink-0 text-slate-400">p{block.page + 1}</span>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* File list */}

@@ -7,7 +7,15 @@
       "Bash(xargs wc *)",
       "Bash(npx prisma *)",
       "Bash(PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION=\"Proceed\" npx prisma db push --force-reset --accept-data-loss)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "WebSearch",
+      "Read(//c/Users/uparp/Desktop/dqms_v3/backend/**)",
+      "Read(//c/Users/uparp/Desktop/dqms_v3/backend/ai//**)",
+      "Read(//c/Users/uparp/Desktop/dqms_v3/backend//**)",
+      "Bash(npm install *)",
+      "Bash(npx next *)",
+      "Bash(mkdir -p public/wasm)",
+      "Bash(cp node_modules/occt-import-js/dist/occt-import-js.wasm public/wasm/)"
     ],
     "additionalDirectories": [
       "C:\\Users\\uparp\\Desktop\\dqms_v3\\dqms_v4\\src\\app\\api\\leads\\[id]",

@@ -8,7 +8,17 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle2, Package, Calendar, ClipboardList, FileText, Download } from "lucide-react";
+import dynamic from "next/dynamic";
+import { CheckCircle2, Package, Calendar, ClipboardList, FileText, Download, Box } from "lucide-react";
+
+const StepViewer = dynamic(() => import("@/components/parts/step-viewer"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-[300px] bg-slate-50 rounded-lg border">
+      <span className="text-xs text-slate-400">Loading 3D viewer...</span>
+    </div>
+  ),
+});
 
 interface PartEntry {
   groupedRfqPartId: string;
@@ -68,6 +78,7 @@ export default function VendorPortalPage({
   const [overallNotes, setOverallNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [step3dOpen, setStep3dOpen] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetch(`/api/vendor-portal/${token}`)
@@ -249,7 +260,7 @@ export default function VendorPortalPage({
                             View Drawing
                           </a>
                         )}
-                        {entry.hasStep && (
+                        {entry.hasStep && (<>
                           <a
                             href={`/api/vendor-portal/${token}/step/${entry.part.id}`}
                             download
@@ -258,8 +269,24 @@ export default function VendorPortalPage({
                             <Download className="h-3.5 w-3.5" />
                             Download STEP
                           </a>
-                        )}
+                          <button
+                            onClick={() => setStep3dOpen((prev) => ({ ...prev, [entry.part.id]: !prev[entry.part.id] }))}
+                            className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md border transition-colors ${
+                              step3dOpen[entry.part.id]
+                                ? "border-blue-300 text-blue-700 bg-blue-100"
+                                : "border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
+                            }`}
+                          >
+                            <Box className="h-3.5 w-3.5" />
+                            {step3dOpen[entry.part.id] ? "Close 3D" : "View 3D"}
+                          </button>
+                        </>)}
                       </div>
+                      {entry.hasStep && step3dOpen[entry.part.id] && (
+                        <div className="mt-2">
+                          <StepViewer src={`/api/vendor-portal/${token}/step/${entry.part.id}`} />
+                        </div>
+                      )}
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">

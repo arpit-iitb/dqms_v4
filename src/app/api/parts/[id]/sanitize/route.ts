@@ -1,81 +1,181 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAbsolutePath, saveFile } from "@/lib/storage";
-import { spawn } from "child_process";
+import {
+  analyzeForSanitization,
+  applySanitization,
+  type RedactionBlock,
+} from "@/lib/sanitizer";
 import fs from "fs/promises";
-import os from "os";
-import path from "path";
 
 export const dynamic = "force-dynamic";
 
-function getPythonCmd(): string {
-  return process.env.AI_SANITIZER_PYTHON ?? (process.platform === "win32" ? "python" : "python3");
-}
-
-function getScriptPath(): string {
-  return process.env.AI_SANITIZER_SCRIPT ?? path.resolve(process.cwd(), "../backend/ai/ai_sanitizer.py");
-}
-
 // POST /api/parts/[id]/sanitize
-// Body: { fileId: string }  — the DRAWING_PDF file to sanitize
+// Body variants:
+//   { fileId, action: "analyze" }              — Phase 1 only (returns proposed redactions)
+//   { fileId, action: "apply", redactions, internalId? }  — Phase 2 (apply approved redactions)
+//   { fileId }                                  — Full sanitize (backward compat: analyze + apply)
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { fileId } = await req.json();
+  const body = await req.json();
+  const { fileId, action } = body as {
+    fileId?: string;
+    action?: "analyze" | "apply";
+  };
 
-  if (!fileId) return NextResponse.json({ error: "fileId is required" }, { status: 400 });
+  if (!fileId) {
+    return NextResponse.json({ error: "fileId is required" }, { status: 400 });
+  }
 
   if (!process.env.GEMINI_API_KEY) {
-    return NextResponse.json({ error: "GEMINI_API_KEY not configured" }, { status: 503 });
+    return NextResponse.json(
+      { error: "GEMINI_API_KEY not configured" },
+      { status: 503 }
+    );
   }
 
+  // Validate file belongs to this part and is a DRAWING_PDF
   const file = await prisma.file.findUnique({ where: { id: fileId } });
   if (!file || file.partId !== id) {
-    return NextResponse.json({ error: "File not found for this part" }, { status: 404 });
+    return NextResponse.json(
+      { error: "File not found for this part" },
+      { status: 404 }
+    );
   }
   if (file.fileType !== "DRAWING_PDF") {
-    return NextResponse.json({ error: "Only DRAWING_PDF files can be sanitized" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Only DRAWING_PDF files can be sanitized" },
+      { status: 400 }
+    );
   }
 
   const inputPath = getAbsolutePath(file.filePath);
-
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "dqms-ai-"));
-  const outputPath = path.join(tempDir, `${file.id}_masked.pdf`);
+  let pdfBuffer: Buffer;
 
   try {
-    const result = await new Promise<{ stdout: string; stderr: string; code: number | null }>(
-      (resolve, reject) => {
-        const child = spawn(getPythonCmd(), [
-          getScriptPath(),
-          "--input", inputPath,
-          "--output", outputPath,
-          "--internal-id", file.id,
-        ], {
-          env: { ...process.env, GEMINI_API_KEY: process.env.GEMINI_API_KEY },
+    pdfBuffer = await fs.readFile(inputPath);
+  } catch {
+    return NextResponse.json(
+      { error: "PDF file not found on disk" },
+      { status: 404 }
+    );
+  }
+
+  try {
+    // ------------------------------------------------------------------
+    // ACTION: ANALYZE — return proposed redactions without modifying PDF
+    // ------------------------------------------------------------------
+    if (action === "analyze") {
+      const analysis = await analyzeForSanitization(pdfBuffer);
+      return NextResponse.json(analysis);
+    }
+
+    // ------------------------------------------------------------------
+    // ACTION: APPLY — take approved redactions and generate masked PDF
+    // ------------------------------------------------------------------
+    if (action === "apply") {
+      const { redactions, internalId } = body as {
+        redactions?: RedactionBlock[];
+        internalId?: string;
+      };
+
+      if (!redactions || !Array.isArray(redactions)) {
+        return NextResponse.json(
+          { error: "redactions array is required for action=apply" },
+          { status: 400 }
+        );
+      }
+
+      const maskedBuffer = await applySanitization(pdfBuffer, redactions, {
+        internalId: internalId ?? file.id,
+        companyOverlay: "Mechximize",
+      });
+
+      // Save masked PDF
+      const maskedName = `${file.id}_masked.pdf`;
+      const maskedPath = await saveFile(
+        maskedBuffer,
+        maskedName,
+        "masked"
+      );
+
+      // Upsert masked derivative
+      const existing = await prisma.fileDerivative.findFirst({
+        where: { fileId: file.id, derivativeType: "MASKED" },
+      });
+
+      if (existing) {
+        await prisma.fileDerivative.update({
+          where: { id: existing.id },
+          data: { filePath: maskedPath, status: "READY", errorMessage: null },
         });
-        let stdout = "";
-        let stderr = "";
-        child.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
-        child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
-        child.on("error", reject);
-        child.on("close", (code) => resolve({ stdout, stderr, code }));
+      } else {
+        await prisma.fileDerivative.create({
+          data: {
+            fileId: file.id,
+            derivativeType: "MASKED",
+            filePath: maskedPath,
+            status: "READY",
+          },
+        });
+      }
+
+      // Extract metadata from removed blocks
+      const removedTexts = redactions
+        .filter((r) => r.action === "REMOVE" && !r.isImage)
+        .map((r) => r.text);
+
+      // Update file metadata
+      const clientDrawingId =
+        (body.metadata?.clientDrawingId as string) ?? null;
+      const clientCompanyName =
+        (body.metadata?.clientCompanyName as string) ?? null;
+
+      await prisma.file.update({
+        where: { id: file.id },
+        data: {
+          clientDrawingId,
+          clientCompanyName,
+          sanitizationMetadata: body.metadata ?? {},
+          aiSanitizedAt: new Date(),
+        },
+      });
+
+      // Transition part to SANITIZED
+      await prisma.part.update({
+        where: { id },
+        data: { state: "SANITIZED" },
+      });
+
+      return NextResponse.json({
+        maskedFileId: file.id,
+        clientDrawingId,
+        clientCompanyName,
+        redactedBlockCount: redactions.filter((r) => r.action === "REMOVE")
+          .length,
+      });
+    }
+
+    // ------------------------------------------------------------------
+    // NO ACTION — Full sanitize (backward compatible: analyze + apply)
+    // ------------------------------------------------------------------
+    const analysis = await analyzeForSanitization(pdfBuffer);
+
+    const maskedBuffer = await applySanitization(
+      pdfBuffer,
+      analysis.blocks,
+      {
+        internalId: file.id,
+        companyOverlay: "Mechximize",
       }
     );
 
-    if (result.code !== 0) {
-      throw new Error(result.stderr.trim() || result.stdout.trim() || "AI sanitizer failed");
-    }
-
-    let parsed: any;
-    try { parsed = JSON.parse(result.stdout.trim()); } catch {
-      throw new Error("AI sanitizer returned invalid JSON");
-    }
-
-    const outputBuffer = await fs.readFile(outputPath);
+    // Save masked PDF
     const maskedName = `${file.id}_masked.pdf`;
-    const maskedPath = await saveFile(outputBuffer, maskedName, "masked");
+    const maskedPath = await saveFile(maskedBuffer, maskedName, "masked");
 
     // Upsert masked derivative
     const existing = await prisma.fileDerivative.findFirst({
@@ -89,17 +189,22 @@ export async function POST(
       });
     } else {
       await prisma.fileDerivative.create({
-        data: { fileId: file.id, derivativeType: "MASKED", filePath: maskedPath, status: "READY" },
+        data: {
+          fileId: file.id,
+          derivativeType: "MASKED",
+          filePath: maskedPath,
+          status: "READY",
+        },
       });
     }
 
-    // Update file metadata from sanitizer output
+    // Update file metadata from analysis
     await prisma.file.update({
       where: { id: file.id },
       data: {
-        clientDrawingId: parsed.clientDrawingId ?? null,
-        clientCompanyName: parsed.clientCompanyName ?? null,
-        sanitizationMetadata: parsed.metadata ?? {},
+        clientDrawingId: analysis.metadata.clientDrawingId,
+        clientCompanyName: analysis.metadata.clientCompanyName,
+        sanitizationMetadata: analysis.metadata,
         aiSanitizedAt: new Date(),
       },
     });
@@ -112,13 +217,15 @@ export async function POST(
 
     return NextResponse.json({
       maskedFileId: file.id,
-      clientDrawingId: parsed.clientDrawingId,
-      clientCompanyName: parsed.clientCompanyName,
-      redactedBlockCount: parsed.redactedBlockCount ?? 0,
+      clientDrawingId: analysis.metadata.clientDrawingId,
+      clientCompanyName: analysis.metadata.clientCompanyName,
+      redactedBlockCount: analysis.blocks.filter(
+        (b) => b.action === "REMOVE"
+      ).length,
     });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || "Sanitization failed" }, { status: 500 });
-  } finally {
-    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : "Sanitization failed";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
