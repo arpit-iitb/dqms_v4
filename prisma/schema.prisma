@@ -68,11 +68,39 @@ model Vendor {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  rfqs        RFQ[]
-  planBlocks  PlanBlock[]
-  groupedRfqs GroupedRFQVendor[]
+  rfqs         RFQ[]
+  planBlocks   PlanBlock[]
+  groupedRfqs  GroupedRFQVendor[]
+  capabilities VendorCapability[]
 
   @@map("vendors")
+}
+
+model ManufacturingProcess {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  category  String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  vendorCapabilities VendorCapability[]
+  groupedRfqs        GroupedRFQ[]
+
+  @@map("manufacturing_processes")
+}
+
+model VendorCapability {
+  id        String   @id @default(uuid())
+  vendorId  String   @map("vendor_id")
+  processId String   @map("process_id")
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  vendor  Vendor               @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  process ManufacturingProcess @relation(fields: [processId], references: [id], onDelete: Cascade)
+
+  @@unique([vendorId, processId])
+  @@index([vendorId])
+  @@map("vendor_capabilities")
 }
 
 model DrawingCounter {
@@ -370,13 +398,15 @@ model GroupedRFQ {
   id        String    @id @default(uuid())
   publicId  String    @unique @map("public_id")
   leadId    String    @map("lead_id")
+  processId String?   @map("process_id")
   status    RFQStatus @default(SENT)
   dueDate   DateTime  @map("due_date")
   coverNote String?   @map("cover_note")
   locked    Boolean   @default(false)
   createdAt DateTime  @default(now()) @map("created_at")
 
-  lead    Lead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  lead    Lead                  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  process ManufacturingProcess? @relation(fields: [processId], references: [id])
   vendors GroupedRFQVendor[]
   parts   GroupedRFQPart[]
 
@@ -424,6 +454,7 @@ model GroupedPartQuote {
   leadTimeDays     Int?     @map("lead_time_days")
   notes            String?
   quoteBreakdown   Json?    @map("quote_breakdown")
+  selected         Boolean  @default(false)
   createdAt        DateTime @default(now()) @map("created_at")
 
   groupedRfqPart   GroupedRFQPart   @relation(fields: [groupedRfqPartId], references: [id], onDelete: Cascade)

@@ -14,7 +14,12 @@ export async function GET(
   const rfqs = await prisma.groupedRFQ.findMany({
     where: { leadId: id },
     include: {
-      vendors: { include: { vendor: true } },
+      vendors: {
+        include: {
+          vendor: true,
+          partQuotes: true,
+        },
+      },
       parts: { include: { part: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -29,7 +34,7 @@ export async function POST(
 ) {
   const { id } = await params;
   const body = await req.json();
-  const { partIds, vendorIds, dueDate, coverNote } = body;
+  const { partIds, vendorIds, dueDate, coverNote, processId } = body;
 
   if (!partIds?.length) return NextResponse.json({ error: "partIds required" }, { status: 400 });
   if (!vendorIds?.length) return NextResponse.json({ error: "vendorIds required" }, { status: 400 });
@@ -39,6 +44,7 @@ export async function POST(
     data: {
       publicId: generatePublicId("RFQ"),
       leadId: id,
+      processId: processId || null,
       dueDate: new Date(dueDate),
       coverNote: coverNote || null,
       parts: {

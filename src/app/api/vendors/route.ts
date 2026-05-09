@@ -6,6 +6,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search") ?? "";
   const activeOnly = searchParams.get("active") !== "false";
+  const processId = searchParams.get("processId");
 
   const vendors = await prisma.vendor.findMany({
     where: {
@@ -19,6 +20,12 @@ export async function GET(req: NextRequest) {
             ],
           }
         : {}),
+      ...(processId
+        ? { capabilities: { some: { processId } } }
+        : {}),
+    },
+    include: {
+      capabilities: { include: { process: true } },
     },
     orderBy: { name: "asc" },
   });
@@ -38,6 +45,8 @@ export async function POST(req: NextRequest) {
   const count = await prisma.vendor.count();
   const vendorCode = `V${String(count + 1).padStart(4, "0")}`;
 
+  const processIds: string[] = body.processIds ?? [];
+
   const vendor = await prisma.vendor.create({
     data: {
       publicId: generatePublicId("V"),
@@ -48,6 +57,16 @@ export async function POST(req: NextRequest) {
       contactPhone: contactPhone || null,
       specialization: specialization || null,
       gstin: gstin || null,
+      ...(processIds.length > 0
+        ? {
+            capabilities: {
+              create: processIds.map((pid: string) => ({ processId: pid })),
+            },
+          }
+        : {}),
+    },
+    include: {
+      capabilities: { include: { process: true } },
     },
   });
 

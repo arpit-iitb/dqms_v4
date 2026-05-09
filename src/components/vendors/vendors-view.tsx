@@ -9,7 +9,19 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Search, Pencil, ToggleLeft, ToggleRight, Truck } from "lucide-react";
+import { Plus, Search, Pencil, ToggleLeft, ToggleRight, Truck, X, ChevronDown } from "lucide-react";
+
+interface ManufacturingProcess {
+  id: string;
+  name: string;
+  category: string;
+}
+
+interface VendorCapability {
+  id: string;
+  processId: string;
+  process: ManufacturingProcess;
+}
 
 interface Vendor {
   id: string;
@@ -21,6 +33,7 @@ interface Vendor {
   specialization: string | null;
   gstin: string | null;
   isActive: boolean;
+  capabilities?: VendorCapability[];
 }
 
 const EMPTY_FORM = {
@@ -38,6 +51,22 @@ export function VendorsView() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // Process capabilities
+  const [allProcesses, setAllProcesses] = useState<ManufacturingProcess[]>([]);
+  const [selectedProcessIds, setSelectedProcessIds] = useState<string[]>([]);
+  const [processDropdownOpen, setProcessDropdownOpen] = useState(false);
+  const [addingNewProcess, setAddingNewProcess] = useState(false);
+  const [newProcessName, setNewProcessName] = useState("");
+  const [newProcessCategory, setNewProcessCategory] = useState("");
+
+  const loadProcesses = () => {
+    fetch("/api/manufacturing-processes")
+      .then((r) => r.json())
+      .then((d) => setAllProcesses(d.processes ?? []));
+  };
+
+  useEffect(() => { loadProcesses(); }, []);
+
   const load = () => {
     setLoading(true);
     const params = new URLSearchParams();
@@ -54,6 +83,8 @@ export function VendorsView() {
   const openCreate = () => {
     setEditing(null);
     setForm(EMPTY_FORM);
+    setSelectedProcessIds([]);
+    setAddingNewProcess(false);
     setError("");
     setDialogOpen(true);
   };
@@ -67,6 +98,8 @@ export function VendorsView() {
       specialization: v.specialization ?? "",
       gstin: v.gstin ?? "",
     });
+    setSelectedProcessIds(v.capabilities?.map((c) => c.processId) ?? []);
+    setAddingNewProcess(false);
     setError("");
     setDialogOpen(true);
   };
@@ -76,16 +109,17 @@ export function VendorsView() {
     setSaving(true);
     setError("");
     try {
+      const payload = { ...form, processIds: selectedProcessIds };
       const res = editing
         ? await fetch(`/api/vendors/${editing.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(form),
+            body: JSON.stringify(payload),
           })
         : await fetch("/api/vendors", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(form),
+            body: JSON.stringify(payload),
           });
       if (!res.ok) {
         const d = await res.json();
@@ -167,6 +201,15 @@ export function VendorsView() {
                     {v.specialization && (
                       <p className="text-xs text-slate-500 truncate">{v.specialization}</p>
                     )}
+                    {v.capabilities && v.capabilities.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {v.capabilities.map((c) => (
+                          <Badge key={c.id} variant="outline" className="text-xs px-1.5 py-0 bg-blue-50 text-blue-700 border-blue-200">
+                            {c.process.name}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
@@ -224,6 +267,139 @@ export function VendorsView() {
                 <Input value={form.gstin} onChange={(e) => set("gstin", e.target.value)} placeholder="27AAAAA0000A1Z5" />
               </div>
             </div>
+
+            {/* Process capabilities selector */}
+            <div className="space-y-1.5">
+              <Label>Manufacturing Processes</Label>
+              {selectedProcessIds.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-1">
+                  {selectedProcessIds.map((pid) => {
+                    const proc = allProcesses.find((p) => p.id === pid);
+                    return proc ? (
+                      <Badge key={pid} variant="outline" className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-700 border-blue-200 gap-1">
+                        {proc.name}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedProcessIds((prev) => prev.filter((x) => x !== pid))}
+                          className="ml-0.5 hover:text-red-600"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ) : null;
+                  })}
+                </div>
+              )}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setProcessDropdownOpen((v) => !v)}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm text-left flex items-center justify-between text-muted-foreground"
+                >
+                  <span>{selectedProcessIds.length > 0 ? `${selectedProcessIds.length} selected` : "Select processes..."}</span>
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${processDropdownOpen ? "rotate-180" : ""}`} />
+                </button>
+                {processDropdownOpen && (
+                  <div className="absolute z-50 top-full mt-1 w-full bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                    {(() => {
+                      const grouped: Record<string, ManufacturingProcess[]> = {};
+                      allProcesses.forEach((p) => {
+                        if (!grouped[p.category]) grouped[p.category] = [];
+                        grouped[p.category].push(p);
+                      });
+                      return Object.entries(grouped).map(([category, procs]) => (
+                        <div key={category}>
+                          <p className="text-xs font-semibold text-muted-foreground px-3 py-1.5 bg-slate-50 sticky top-0">{category}</p>
+                          {procs.map((p) => (
+                            <label
+                              key={p.id}
+                              className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-slate-50 cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedProcessIds.includes(p.id)}
+                                onChange={() =>
+                                  setSelectedProcessIds((prev) =>
+                                    prev.includes(p.id) ? prev.filter((x) => x !== p.id) : [...prev, p.id]
+                                  )
+                                }
+                                className="rounded"
+                              />
+                              <span className="text-xs">{p.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      ));
+                    })()}
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-xs text-blue-600 font-medium hover:bg-blue-50 border-t"
+                      onClick={() => {
+                        setAddingNewProcess(true);
+                        setProcessDropdownOpen(false);
+                      }}
+                    >
+                      <Plus className="h-3 w-3 inline mr-1" /> Add New Process
+                    </button>
+                  </div>
+                )}
+              </div>
+              {addingNewProcess && (
+                <div className="flex items-end gap-2 p-2 border rounded-md bg-slate-50">
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-xs">Name</Label>
+                    <Input
+                      value={newProcessName}
+                      onChange={(e) => setNewProcessName(e.target.value)}
+                      placeholder="e.g. Laser Cutting"
+                      className="h-7 text-xs"
+                    />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-xs">Category</Label>
+                    <Input
+                      value={newProcessCategory}
+                      onChange={(e) => setNewProcessCategory(e.target.value)}
+                      placeholder="e.g. Cutting"
+                      className="h-7 text-xs"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled={!newProcessName || !newProcessCategory}
+                    onClick={async () => {
+                      const res = await fetch("/api/manufacturing-processes", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ name: newProcessName, category: newProcessCategory }),
+                      });
+                      if (res.ok) {
+                        const d = await res.json();
+                        setAllProcesses((prev) => [...prev, d.process]);
+                        setSelectedProcessIds((prev) => [...prev, d.process.id]);
+                        setNewProcessName("");
+                        setNewProcessCategory("");
+                        setAddingNewProcess(false);
+                      }
+                    }}
+                  >
+                    Add
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => { setAddingNewProcess(false); setNewProcessName(""); setNewProcessCategory(""); }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              )}
+            </div>
+
             {error && <p className="text-sm text-red-600">{error}</p>}
           </div>
           <DialogFooter>

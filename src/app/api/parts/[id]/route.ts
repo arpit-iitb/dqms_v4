@@ -47,6 +47,7 @@ export async function PATCH(
       ...(body.materialGrade !== undefined && { materialGrade: body.materialGrade }),
       ...(body.surfaceTreatment !== undefined && { surfaceTreatment: body.surfaceTreatment }),
       ...(body.quantity !== undefined && { quantity: body.quantity }),
+      ...(body.clientPartId !== undefined && { clientPartId: body.clientPartId }),
     },
   });
 
